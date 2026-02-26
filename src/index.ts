@@ -37,8 +37,10 @@ import {
   generateKeypair,
   loadPublicKey,
   formatPublicKeyField,
+  deriveAgentId,
+  loadAgentId,
+  saveAgentId,
 } from './identity.js';
-import { getRemoteCredential, setRemoteCredential } from './config.js';
 import { discoverSkills, resolveSkillPointers } from './skills.js';
 import { diffCards } from './diff.js';
 import {
@@ -64,7 +66,16 @@ export type {
 
 // Re-export selected utilities
 export { diffCards, formatDiff } from './diff.js';
-export { signChallenge, verifySignature, formatPublicKeyField, parsePublicKeyField } from './identity.js';
+export {
+  signChallenge,
+  verifySignature,
+  signMessage,
+  formatPublicKeyField,
+  parsePublicKeyField,
+  deriveAgentId,
+  loadAgentId,
+  NIT_NAMESPACE,
+} from './identity.js';
 export { fetchBranchCard } from './remote.js';
 
 // ---------------------------------------------------------------------------
@@ -174,8 +185,9 @@ async function getAuthorName(nitDir: string): Promise<string> {
 // ---------------------------------------------------------------------------
 
 export interface InitResult {
+  agentId: string;
   publicKey: string;
-  cardUrl: string | null;
+  cardUrl: string;
   skillsFound: string[];
 }
 
@@ -209,9 +221,11 @@ export async function init(options?: {
   await fs.mkdir(join(nitDir, 'identity'), { recursive: true });
   await fs.mkdir(join(nitDir, 'logs'), { recursive: true });
 
-  // Generate keypair
+  // Generate keypair and derive agent ID
   const { publicKey: pubBase64 } = await generateKeypair(nitDir);
   const publicKeyField = formatPublicKeyField(pubBase64);
+  const agentId = deriveAgentId(publicKeyField);
+  await saveAgentId(nitDir, agentId);
 
   // Read or create agent-card.json
   const cardPath = join(projDir, CARD_FILE);
@@ -246,6 +260,11 @@ export async function init(options?: {
     };
   }
 
+  // Set card URL if not already specified
+  if (!card.url) {
+    card.url = `https://agent-${agentId}.newtype-ai.org`;
+  }
+
   // Write agent-card.json
   await writeWorkingCard(nitDir, card);
 
@@ -273,8 +292,9 @@ export async function init(options?: {
   await fs.writeFile(join(nitDir, 'config'), '', 'utf-8');
 
   return {
+    agentId,
     publicKey: publicKeyField,
-    cardUrl: card.url || null,
+    cardUrl: card.url,
     skillsFound,
   };
 }
@@ -626,34 +646,23 @@ export async function push(options?: {
 export interface RemoteInfo {
   name: string;
   url: string;
-  hasCredential: boolean;
+  agentId: string;
 }
 
 /**
- * Show remote info. URL comes from agent-card.json, credential from .nit/config.
+ * Show remote info. URL comes from agent-card.json, agent ID from .nit/identity/.
  */
 export async function remote(options?: {
   projectDir?: string;
 }): Promise<RemoteInfo> {
   const nitDir = findNitDir(options?.projectDir);
   const card = await readWorkingCard(nitDir);
-  const credential = await getRemoteCredential(nitDir, 'origin');
+  const agentId = await loadAgentId(nitDir);
 
   return {
     name: 'origin',
     url: card.url || '(not set)',
-    hasCredential: credential !== null,
+    agentId,
   };
 }
 
-/**
- * Set the push credential for a remote.
- */
-export async function setCredential(
-  credential: string,
-  options?: { projectDir?: string; remoteName?: string },
-): Promise<void> {
-  const nitDir = findNitDir(options?.projectDir);
-  const remoteName = options?.remoteName || 'origin';
-  await setRemoteCredential(nitDir, remoteName, credential);
-}

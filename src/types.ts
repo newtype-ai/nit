@@ -44,7 +44,7 @@ export interface NitHead {
 
 /** Remote configuration for a single named remote. */
 export interface NitRemoteConfig {
-  /** Push credential (Bearer token) */
+  /** Legacy field — push auth is now via Ed25519 keypair */
   credential?: string;
 }
 

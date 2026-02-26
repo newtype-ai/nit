@@ -3,7 +3,7 @@
 //
 // Handles push/pull of agent card branches to a nit-compatible remote.
 //
-// Write endpoints (at api.newtype-ai.org, auth via push credential):
+// Write endpoints (at api.newtype-ai.org, Ed25519 signature auth):
 //   PUT    /agent-card/branches/{branch}
 //   GET    /agent-card/branches
 //   DELETE /agent-card/branches/{branch}
@@ -13,13 +13,57 @@
 //   GET /.well-known/agent-card.json?branch=faam.io
 // ---------------------------------------------------------------------------
 
+import { createHash } from 'node:crypto';
 import type { AgentCard, PushResult } from './types.js';
-import { getRemoteCredential } from './config.js';
-import { signChallenge } from './identity.js';
+import { loadAgentId, signMessage, signChallenge } from './identity.js';
 
 // The API base URL is always api.newtype-ai.org for MVP.
 // The card URL (for reads) comes from agent-card.json's `url` field.
 const API_BASE = 'https://api.newtype-ai.org';
+
+// ---------------------------------------------------------------------------
+// Ed25519 signature auth for write operations
+// ---------------------------------------------------------------------------
+
+/**
+ * Compute SHA-256 hex digest of a string.
+ */
+function sha256Hex(data: string): string {
+  return createHash('sha256').update(data, 'utf-8').digest('hex');
+}
+
+/**
+ * Build Ed25519 auth headers for a nit API request.
+ *
+ * Canonical signed message:
+ *   {METHOD}\n{PATH}\n{AGENT_ID}\n{TIMESTAMP}[\n{SHA256_HEX(BODY)}]
+ */
+async function buildAuthHeaders(
+  nitDir: string,
+  method: string,
+  path: string,
+  body?: string,
+): Promise<Record<string, string>> {
+  const agentId = await loadAgentId(nitDir);
+  const timestamp = Math.floor(Date.now() / 1000).toString();
+
+  let message = `${method}\n${path}\n${agentId}\n${timestamp}`;
+  if (body !== undefined) {
+    message += `\n${sha256Hex(body)}`;
+  }
+
+  const signature = await signMessage(nitDir, message);
+
+  return {
+    'X-Nit-Agent-Id': agentId,
+    'X-Nit-Timestamp': timestamp,
+    'X-Nit-Signature': signature,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Push
+// ---------------------------------------------------------------------------
 
 /**
  * Push a single branch's card to the remote.
@@ -31,37 +75,29 @@ export async function pushBranch(
   cardJson: string,
   commitHash: string,
 ): Promise<PushResult> {
-  const credential = await getRemoteCredential(nitDir, remoteName);
-  if (!credential) {
-    return {
-      branch,
-      commitHash,
-      remoteUrl: API_BASE,
-      success: false,
-      error: `No credential configured for remote "${remoteName}". Run: nit remote set-credential <agent-key>`,
-    };
-  }
-
-  const url = `${API_BASE}/agent-card/branches/${encodeURIComponent(branch)}`;
+  const path = `/agent-card/branches/${encodeURIComponent(branch)}`;
+  const body = JSON.stringify({ card_json: cardJson, commit_hash: commitHash });
 
   try {
-    const res = await fetch(url, {
+    const authHeaders = await buildAuthHeaders(nitDir, 'PUT', path, body);
+
+    const res = await fetch(`${API_BASE}${path}`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${credential}`,
+        ...authHeaders,
       },
-      body: JSON.stringify({ card_json: cardJson, commit_hash: commitHash }),
+      body,
     });
 
     if (!res.ok) {
-      const body = await res.text();
+      const text = await res.text();
       return {
         branch,
         commitHash,
         remoteUrl: API_BASE,
         success: false,
-        error: `HTTP ${res.status}: ${body}`,
+        error: `HTTP ${res.status}: ${text}`,
       };
     }
 
@@ -93,6 +129,10 @@ export async function pushAll(
   return results;
 }
 
+// ---------------------------------------------------------------------------
+// List / Delete remote branches
+// ---------------------------------------------------------------------------
+
 /**
  * List all branches that have been pushed to the remote.
  */
@@ -100,15 +140,11 @@ export async function listRemoteBranches(
   nitDir: string,
   remoteName: string,
 ): Promise<string[]> {
-  const credential = await getRemoteCredential(nitDir, remoteName);
-  if (!credential) {
-    throw new Error(
-      `No credential configured for remote "${remoteName}".`,
-    );
-  }
+  const path = '/agent-card/branches';
+  const authHeaders = await buildAuthHeaders(nitDir, 'GET', path);
 
-  const res = await fetch(`${API_BASE}/agent-card/branches`, {
-    headers: { Authorization: `Bearer ${credential}` },
+  const res = await fetch(`${API_BASE}${path}`, {
+    headers: authHeaders,
   });
 
   if (!res.ok) {
@@ -129,30 +165,29 @@ export async function deleteRemoteBranch(
   remoteName: string,
   branch: string,
 ): Promise<boolean> {
-  const credential = await getRemoteCredential(nitDir, remoteName);
-  if (!credential) {
-    throw new Error(
-      `No credential configured for remote "${remoteName}".`,
-    );
-  }
+  const path = `/agent-card/branches/${encodeURIComponent(branch)}`;
+  const authHeaders = await buildAuthHeaders(nitDir, 'DELETE', path);
 
-  const url = `${API_BASE}/agent-card/branches/${encodeURIComponent(branch)}`;
-  const res = await fetch(url, {
+  const res = await fetch(`${API_BASE}${path}`, {
     method: 'DELETE',
-    headers: { Authorization: `Bearer ${credential}` },
+    headers: authHeaders,
   });
 
   return res.ok;
 }
+
+// ---------------------------------------------------------------------------
+// Fetch (read)
+// ---------------------------------------------------------------------------
 
 /**
  * Fetch an agent card from a remote URL.
  *
  * For the main branch, this is a simple public GET.
  * For other branches, this performs the challenge-response flow:
- *   1. Request branch → 401 with challenge
+ *   1. Request branch -> 401 with challenge
  *   2. Sign challenge with agent's private key
- *   3. Re-request with signature → get branch card
+ *   3. Re-request with signature -> get branch card
  *
  * @param cardUrl   The agent's card URL (e.g. https://agent-{uuid}.newtype-ai.org)
  * @param branch    Branch to fetch ("main" for public, others need auth)

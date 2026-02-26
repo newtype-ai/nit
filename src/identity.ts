@@ -2,13 +2,16 @@
 // nit — Ed25519 identity management
 //
 // Key storage:
-//   .nit/identity/agent.pub  — base64 raw 32-byte public key
-//   .nit/identity/agent.key  — base64 raw 32-byte private seed (0o600)
+//   .nit/identity/agent.pub   — base64 raw 32-byte public key
+//   .nit/identity/agent.key   — base64 raw 32-byte private seed (0o600)
+//   .nit/identity/agent-id    — derived UUID (UUIDv5 of public key)
 //
 // Public key format in agent-card.json: "ed25519:<base64>"
+// Agent ID derivation: UUIDv5(NIT_NAMESPACE, "ed25519:<base64>")
 // ---------------------------------------------------------------------------
 
 import {
+  createHash,
   generateKeyPairSync,
   createPrivateKey,
   createPublicKey,
@@ -180,4 +183,99 @@ export function verifySignature(
     publicKeyObj,
     Buffer.from(signatureBase64, 'base64'),
   );
+}
+
+/**
+ * Sign an arbitrary message with the agent's private key.
+ * Returns a standard base64-encoded signature.
+ */
+export async function signMessage(
+  nitDir: string,
+  message: string,
+): Promise<string> {
+  const privateKey = await loadPrivateKey(nitDir);
+  const sig = sign(null, Buffer.from(message, 'utf-8'), privateKey);
+  return sig.toString('base64');
+}
+
+// ---------------------------------------------------------------------------
+// Self-sovereign agent ID derivation
+// ---------------------------------------------------------------------------
+
+/**
+ * Fixed namespace UUID for nit agent ID derivation.
+ * Generated once, hardcoded forever. Changing this would change ALL agent IDs.
+ * Must match the server-side constant in apps/agent-cards/src/api/agent-id.ts.
+ */
+export const NIT_NAMESPACE = '801ba518-f326-47e5-97c9-d1efd1865a19';
+
+/**
+ * Derive a deterministic agent ID (UUID) from an Ed25519 public key field.
+ * Uses UUIDv5: SHA-1 hash of NIT_NAMESPACE + publicKeyField.
+ *
+ * @param publicKeyField  "ed25519:<base64>" format string
+ * @returns               UUID string (lowercase, with hyphens)
+ */
+export function deriveAgentId(publicKeyField: string): string {
+  return uuidv5(publicKeyField, NIT_NAMESPACE);
+}
+
+/**
+ * Load the agent ID from .nit/identity/agent-id.
+ */
+export async function loadAgentId(nitDir: string): Promise<string> {
+  const idPath = join(nitDir, 'identity', 'agent-id');
+  try {
+    return (await fs.readFile(idPath, 'utf-8')).trim();
+  } catch {
+    throw new Error(
+      'No agent ID found. Run `nit init` to generate identity.',
+    );
+  }
+}
+
+/**
+ * Save the agent ID to .nit/identity/agent-id.
+ */
+export async function saveAgentId(
+  nitDir: string,
+  agentId: string,
+): Promise<void> {
+  const idPath = join(nitDir, 'identity', 'agent-id');
+  await fs.writeFile(idPath, agentId + '\n', 'utf-8');
+}
+
+// ---------------------------------------------------------------------------
+// UUIDv5 (SHA-1 based, Node.js implementation)
+// ---------------------------------------------------------------------------
+
+function parseUuid(uuid: string): Buffer {
+  const hex = uuid.replace(/-/g, '');
+  return Buffer.from(hex, 'hex');
+}
+
+function formatUuid(bytes: Buffer): string {
+  const hex = bytes.toString('hex');
+  return [
+    hex.slice(0, 8),
+    hex.slice(8, 12),
+    hex.slice(12, 16),
+    hex.slice(16, 20),
+    hex.slice(20, 32),
+  ].join('-');
+}
+
+function uuidv5(name: string, namespace: string): string {
+  const namespaceBytes = parseUuid(namespace);
+  const nameBytes = Buffer.from(name, 'utf-8');
+
+  const data = Buffer.concat([namespaceBytes, nameBytes]);
+  const hash = createHash('sha1').update(data).digest();
+
+  // Take first 16 bytes and set version (5) and variant (RFC 4122) bits
+  const uuid = Buffer.from(hash.subarray(0, 16));
+  uuid[6] = (uuid[6] & 0x0f) | 0x50; // version 5
+  uuid[8] = (uuid[8] & 0x3f) | 0x80; // variant RFC 4122
+
+  return formatUuid(uuid);
 }

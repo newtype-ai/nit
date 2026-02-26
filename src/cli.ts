@@ -15,7 +15,6 @@ import {
   checkout,
   push,
   remote,
-  setCredential,
 } from './index.js';
 import { formatDiff } from './diff.js';
 
@@ -84,10 +83,9 @@ async function cmdInit() {
 
   console.log(bold('Initialized nit repository'));
   console.log();
-  console.log(`  Public key:  ${green(result.publicKey)}`);
-  if (result.cardUrl) {
-    console.log(`  Card URL:    ${result.cardUrl}`);
-  }
+  console.log(`  Agent ID:    ${green(result.agentId)}`);
+  console.log(`  Public key:  ${dim(result.publicKey)}`);
+  console.log(`  Card URL:    ${result.cardUrl}`);
   if (result.skillsFound.length > 0) {
     console.log(`  Skills:      ${result.skillsFound.join(', ')}`);
   } else {
@@ -211,27 +209,13 @@ async function cmdPush(args: string[]) {
 }
 
 async function cmdRemote(args: string[]) {
-  const subcommand = args[0];
-
-  if (subcommand === 'set-credential') {
-    const token = args[1];
-    if (!token) {
-      console.error('Usage: nit remote set-credential <agent-key>');
-      process.exit(1);
-    }
-    await setCredential(token);
-    console.log(`Credential ${green('configured')} for origin.`);
-    return;
-  }
-
   // Default: show remote info
   const info = await remote();
 
   console.log(`${bold(info.name)}`);
   console.log(`  URL:        ${info.url}`);
-  console.log(
-    `  Credential: ${info.hasCredential ? green('configured') : yellow('not set')}`,
-  );
+  console.log(`  Agent ID:   ${info.agentId}`);
+  console.log(`  Auth:       ${green('Ed25519 keypair')}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -254,13 +238,12 @@ ${bold('Commands:')}
   checkout <branch>  Switch branch (overwrites agent-card.json)
   push [--all]       Push branch(es) to remote
   remote             Show remote info
-  remote set-credential <key>  Set push credential (agent key)
 
 ${bold('Examples:')}
   nit init
   nit branch faam.io
   nit checkout faam.io
-  ${dim('# edit agent-card.json for FAAM...')}
+  ${dim('# edit agent-card.json for this platform...')}
   nit commit -m "FAAM config"
   nit push --all
 `.trim());
