@@ -10,7 +10,7 @@
 //
 // Read endpoints (at agent's card URL, challenge-response for non-main):
 //   GET /.well-known/agent-card.json
-//   GET /.well-known/agent-card.json?branch=faam.fun
+//   GET /.well-known/agent-card.json?branch=faam.io
 // ---------------------------------------------------------------------------
 
 import type { AgentCard, PushResult } from './types.js';

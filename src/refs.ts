@@ -44,7 +44,7 @@ export async function resolveHead(nitDir: string): Promise<string> {
 }
 
 /**
- * Return the current branch name (e.g. "main", "faam.fun").
+ * Return the current branch name (e.g. "main", "faam.io").
  */
 export async function getCurrentBranch(nitDir: string): Promise<string> {
   const head = await getHead(nitDir);

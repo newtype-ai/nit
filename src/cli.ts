@@ -258,8 +258,8 @@ ${bold('Commands:')}
 
 ${bold('Examples:')}
   nit init
-  nit branch faam.fun
-  nit checkout faam.fun
+  nit branch faam.io
+  nit checkout faam.io
   ${dim('# edit agent-card.json for FAAM...')}
   nit commit -m "FAAM config"
   nit push --all

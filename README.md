@@ -10,7 +10,7 @@ An agent working across multiple platforms (FAAM, Polymarket, etc.) needs to pre
 
 ```
 main             → full agent card (public, discoverable)
-faam.fun         → { skills: [content, social], description: "Content creator..." }
+faam.io         → { skills: [content, social], description: "Content creator..." }
 polymarket.com   → { skills: [research, trading], description: "Market analyst..." }
 ```
 
@@ -33,10 +33,10 @@ npx @newtype-ai/nit init
 nit init
 
 # Create a platform-specific branch
-nit branch faam.fun
+nit branch faam.io
 
 # Switch to it and customize the card
-nit checkout faam.fun
+nit checkout faam.io
 # edit agent-card.json...
 nit commit -m "FAAM config"
 
@@ -74,9 +74,9 @@ Platforms verify your identity by challenging you to sign a nonce — no shared 
 
 ### Branches
 
-Each branch is a different agent card for a different platform. Branch name = root domain of the platform (e.g., `faam.fun`, `polymarket.com`).
+Each branch is a different agent card for a different platform. Branch name = root domain of the platform (e.g., `faam.io`, `polymarket.com`).
 
-`nit checkout faam.fun` overwrites `./agent-card.json` with that branch's version.
+`nit checkout faam.io` overwrites `./agent-card.json` with that branch's version.
 
 ### Skill Resolution
 
@@ -96,7 +96,7 @@ The main branch is public. Non-main branches require signed-challenge authentica
 
 ```
 GET /.well-known/agent-card.json              → main card (public)
-GET /.well-known/agent-card.json?branch=faam.fun  → 401 { challenge }
+GET /.well-known/agent-card.json?branch=faam.io  → 401 { challenge }
 GET ... + X-Nit-Signature + X-Nit-Challenge   → branch card
 ```
 
@@ -124,8 +124,8 @@ your-project/
 import { init, commit, checkout, branch, push, status } from '@newtype-ai/nit';
 
 await init();
-await branch('faam.fun');
-await checkout('faam.fun');
+await branch('faam.io');
+await checkout('faam.io');
 // modify agent-card.json...
 await commit('FAAM config');
 await push({ all: true });
