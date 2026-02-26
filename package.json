@@ -1,0 +1,47 @@
+{
+  "name": "@newtype-ai/nit",
+  "version": "0.1.0",
+  "description": "Version control for agent cards",
+  "type": "module",
+  "bin": {
+    "nit": "./dist/cli.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "prepublishOnly": "tsup"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "agent-card",
+    "version-control",
+    "nit",
+    "identity",
+    "a2a",
+    "ed25519"
+  ],
+  "author": "newtype-ai",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/newtype-ai/nit"
+  },
+  "homepage": "https://github.com/newtype-ai/nit",
+  "devDependencies": {
+    "@types/node": "^25.3.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.0.0"
+  }
+}
