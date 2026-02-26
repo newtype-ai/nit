@@ -38,7 +38,7 @@ import {
   loadPublicKey,
   formatPublicKeyField,
 } from './identity.js';
-import { getRemoteCredential } from './config.js';
+import { getRemoteCredential, setRemoteCredential } from './config.js';
 import { discoverSkills, resolveSkillPointers } from './skills.js';
 import { diffCards } from './diff.js';
 import {
@@ -644,4 +644,16 @@ export async function remote(options?: {
     url: card.url || '(not set)',
     hasCredential: credential !== null,
   };
+}
+
+/**
+ * Set the push credential for a remote.
+ */
+export async function setCredential(
+  credential: string,
+  options?: { projectDir?: string; remoteName?: string },
+): Promise<void> {
+  const nitDir = findNitDir(options?.projectDir);
+  const remoteName = options?.remoteName || 'origin';
+  await setRemoteCredential(nitDir, remoteName, credential);
 }

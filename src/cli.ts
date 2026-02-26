@@ -15,6 +15,7 @@ import {
   checkout,
   push,
   remote,
+  setCredential,
 } from './index.js';
 import { formatDiff } from './diff.js';
 
@@ -55,7 +56,7 @@ async function main() {
         await cmdPush(args);
         break;
       case 'remote':
-        await cmdRemote();
+        await cmdRemote(args);
         break;
       case 'help':
       case '--help':
@@ -209,7 +210,21 @@ async function cmdPush(args: string[]) {
   }
 }
 
-async function cmdRemote() {
+async function cmdRemote(args: string[]) {
+  const subcommand = args[0];
+
+  if (subcommand === 'set-credential') {
+    const token = args[1];
+    if (!token) {
+      console.error('Usage: nit remote set-credential <agent-key>');
+      process.exit(1);
+    }
+    await setCredential(token);
+    console.log(`Credential ${green('configured')} for origin.`);
+    return;
+  }
+
+  // Default: show remote info
   const info = await remote();
 
   console.log(`${bold(info.name)}`);
@@ -239,6 +254,7 @@ ${bold('Commands:')}
   checkout <branch>  Switch branch (overwrites agent-card.json)
   push [--all]       Push branch(es) to remote
   remote             Show remote info
+  remote set-credential <key>  Set push credential (agent key)
 
 ${bold('Examples:')}
   nit init

@@ -38,7 +38,7 @@ export async function pushBranch(
       commitHash,
       remoteUrl: API_BASE,
       success: false,
-      error: `No credential configured for remote "${remoteName}". Run: nit remote`,
+      error: `No credential configured for remote "${remoteName}". Run: nit remote set-credential <agent-key>`,
     };
   }
 
