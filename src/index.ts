@@ -40,6 +40,7 @@ import {
   deriveAgentId,
   loadAgentId,
   saveAgentId,
+  signMessage,
 } from './identity.js';
 import { discoverSkills, resolveSkillPointers } from './skills.js';
 import { diffCards } from './diff.js';
@@ -61,6 +62,7 @@ export type {
   FieldDiff,
   PushResult,
   StatusResult,
+  LoginPayload,
   SkillMetadata,
 } from './types.js';
 
@@ -313,6 +315,9 @@ export async function status(options?: {
   const currentBranch = await getCurrentBranch(nitDir);
   const pubBase64 = await loadPublicKey(nitDir);
   const publicKey = formatPublicKeyField(pubBase64);
+  const agentId = await loadAgentId(nitDir);
+  const workingCard = await readWorkingCard(nitDir);
+  const cardUrl = workingCard.url || `https://agent-${agentId}.newtype-ai.org`;
 
   // Check uncommitted changes
   let uncommittedChanges: DiffResult | null = null;
@@ -368,11 +373,46 @@ export async function status(options?: {
   }
 
   return {
+    agentId,
+    cardUrl,
     branch: currentBranch,
     publicKey,
     uncommittedChanges,
     branches: branchStatus,
   };
+}
+
+// ---------------------------------------------------------------------------
+// sign
+// ---------------------------------------------------------------------------
+
+/**
+ * Sign an arbitrary message with the agent's Ed25519 private key.
+ * Returns a base64-encoded signature.
+ */
+export async function sign(
+  message: string,
+  options?: { projectDir?: string },
+): Promise<string> {
+  const nitDir = findNitDir(options?.projectDir);
+  return signMessage(nitDir, message);
+}
+
+/**
+ * Generate a login payload for app authentication.
+ * Constructs the canonical message ({agent_id}\n{domain}\n{timestamp}),
+ * signs it, and returns the full payload ready to send to an app.
+ */
+export async function loginPayload(
+  domain: string,
+  options?: { projectDir?: string },
+): Promise<import('./types.js').LoginPayload> {
+  const nitDir = findNitDir(options?.projectDir);
+  const agentId = await loadAgentId(nitDir);
+  const timestamp = Math.floor(Date.now() / 1000);
+  const message = `${agentId}\n${domain}\n${timestamp}`;
+  const signature = await signMessage(nitDir, message);
+  return { agent_id: agentId, domain, timestamp, signature };
 }
 
 // ---------------------------------------------------------------------------

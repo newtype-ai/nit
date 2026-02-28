@@ -15,6 +15,8 @@ import {
   checkout,
   push,
   remote,
+  sign,
+  loginPayload,
 } from './index.js';
 import { formatDiff } from './diff.js';
 
@@ -53,6 +55,9 @@ async function main() {
         break;
       case 'push':
         await cmdPush(args);
+        break;
+      case 'sign':
+        await cmdSign(args);
         break;
       case 'remote':
         await cmdRemote(args);
@@ -93,13 +98,18 @@ async function cmdInit() {
   }
   console.log();
   console.log(dim('Created .nit/ with initial commit on main.'));
+  console.log();
+  console.log(`Next: open ${bold('agent-card.json')} and set your name, description, and skills.`);
 }
 
 async function cmdStatus() {
   const s = await status();
 
   console.log(`On branch ${bold(s.branch)}`);
-  console.log(`Public key: ${dim(s.publicKey)}`);
+  console.log();
+  console.log(`  Agent ID:    ${green(s.agentId)}`);
+  console.log(`  Public key:  ${dim(s.publicKey)}`);
+  console.log(`  Card URL:    ${s.cardUrl}`);
   console.log();
 
   if (s.uncommittedChanges) {
@@ -218,6 +228,32 @@ async function cmdRemote(args: string[]) {
   console.log(`  Auth:       ${green('Ed25519 keypair')}`);
 }
 
+async function cmdSign(args: string[]) {
+  // nit sign --login <domain>
+  const loginIndex = args.indexOf('--login');
+  if (loginIndex !== -1) {
+    const domain = args[loginIndex + 1];
+    if (!domain) {
+      console.error('Usage: nit sign --login <domain>');
+      process.exit(1);
+    }
+    const payload = await loginPayload(domain);
+    console.log(JSON.stringify(payload, null, 2));
+    return;
+  }
+
+  // nit sign "message"
+  const message = args[0];
+  if (!message) {
+    console.error('Usage: nit sign "message"');
+    console.error('       nit sign --login <domain>');
+    process.exit(1);
+  }
+
+  const signature = await sign(message);
+  console.log(signature);
+}
+
 // ---------------------------------------------------------------------------
 // Help
 // ---------------------------------------------------------------------------
@@ -230,13 +266,15 @@ ${bold('Usage:')} nit <command> [options]
 
 ${bold('Commands:')}
   init               Initialize .nit/ in current directory
-  status             Show current branch and uncommitted changes
+  status             Show identity, branch, and uncommitted changes
   commit -m "msg"    Snapshot agent-card.json
   log                Show commit history
   diff [target]      Compare card vs HEAD, branch, or commit
   branch [name]      List branches or create a new one
   checkout <branch>  Switch branch (overwrites agent-card.json)
   push [--all]       Push branch(es) to remote
+  sign "message"     Sign a message with your Ed25519 key
+  sign --login <dom> Generate login payload for an app
   remote             Show remote info
 
 ${bold('Examples:')}

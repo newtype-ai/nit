@@ -49,13 +49,15 @@ nit push --all
 | Command | Description |
 |---------|-------------|
 | `nit init` | Create `.nit/`, generate Ed25519 keypair, initial commit |
-| `nit status` | Current branch, uncommitted changes, ahead/behind remote |
-| `nit commit -m "msg"` | Snapshot agent-card.json (auto-resolves SKILL.md pointers) |
+| `nit status` | Identity info, current branch, uncommitted changes |
+| `nit commit -m "msg"` | Snapshot agent-card.json |
 | `nit log` | Commit history for current branch |
 | `nit diff [target]` | JSON diff vs HEAD, branch, or commit |
 | `nit branch [name]` | List branches or create a new one |
 | `nit checkout <branch>` | Switch branch (overwrites agent-card.json) |
 | `nit push [--all]` | Push branch(es) to remote |
+| `nit sign "msg"` | Sign a message with your Ed25519 key |
+| `nit sign --login <domain>` | Generate login payload for an app |
 | `nit remote` | Show remote URL and credential status |
 
 ## How It Works

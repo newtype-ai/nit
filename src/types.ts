@@ -126,6 +126,8 @@ export interface PushResult {
 
 /** Result returned by the status command. */
 export interface StatusResult {
+  agentId: string;
+  cardUrl: string;
   branch: string;
   publicKey: string;
   uncommittedChanges: DiffResult | null;
@@ -134,4 +136,12 @@ export interface StatusResult {
     ahead: number;
     behind: number;
   }>;
+}
+
+/** Result of generating a login payload for app authentication. */
+export interface LoginPayload {
+  agent_id: string;
+  domain: string;
+  timestamp: number;
+  signature: string;
 }

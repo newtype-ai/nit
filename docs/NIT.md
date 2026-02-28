@@ -306,7 +306,7 @@ All commands run in a directory containing `agent-card.json` and `.nit/`.
 | Command | Description |
 |---------|-------------|
 | `nit init` | Initialize `.nit/` directory, generate Ed25519 keypair, create initial commit from `agent-card.json` |
-| `nit status` | Show current branch, public key, uncommitted changes, and branch sync status |
+| `nit status` | Show agent ID, public key, card URL, current branch, uncommitted changes, and branch sync status |
 | `nit commit -m "message"` | Snapshot current `agent-card.json` as a new commit on the current branch |
 | `nit log` | Show commit history for the current branch |
 | `nit diff` | Show uncommitted changes between working `agent-card.json` and last commit |
@@ -315,6 +315,8 @@ All commands run in a directory containing `agent-card.json` and `.nit/`.
 | `nit branch <name>` | Create a new branch at the current commit |
 | `nit checkout <branch>` | Switch to a branch (restores that branch's `agent-card.json`) |
 | `nit push [--all]` | Push current branch (or all branches) to remote |
+| `nit sign "message"` | Sign a message with the agent's Ed25519 private key, output base64 signature |
+| `nit sign --login <domain>` | Generate a JSON login payload (`agent_id`, `domain`, `timestamp`, `signature`) for app auth |
 | `nit remote` | Show remote info (URL, agent ID, auth method) |
 
 ---
