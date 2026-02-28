@@ -1,6 +1,6 @@
 {
   "name": "@newtype-ai/nit",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Version control for agent cards",
   "type": "module",
   "bin": {

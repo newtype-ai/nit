@@ -1,7 +1,7 @@
 # nit — E2E Test Results
 
 **Date:** 2026-02-26
-**CLI version:** `@newtype-ai/nit@0.2.0`
+**CLI version:** `@newtype-ai/nit@0.2.1`
 **Server:** `newtype-agent-cards` worker at `*.newtype-ai.org`
 
 ## Test Script
