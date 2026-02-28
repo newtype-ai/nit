@@ -395,6 +395,83 @@ fi
 echo ""
 
 # ---------------------------------------------------------------------------
+# Test 10: nit sign
+# ---------------------------------------------------------------------------
+
+echo "── Test 10: nit sign ─────────────────────────────────"
+
+# Sign arbitrary message
+SIGN_OUTPUT=$($NIT sign "hello world" 2>&1)
+if [[ "$SIGN_OUTPUT" =~ ^[A-Za-z0-9+/=]+$ ]] && [[ ${#SIGN_OUTPUT} -gt 40 ]]; then
+  pass "nit sign outputs base64 signature (${#SIGN_OUTPUT} chars)"
+else
+  fail "nit sign output doesn't look like base64: $SIGN_OUTPUT"
+fi
+
+# Verify the signature is correct
+PUB_BASE64=$(cat "$TEST_DIR/.nit/identity/agent.pub" | tr -d '\n')
+VERIFY_SIG=$(node -e "
+  const { verifySignature } = require('$NIT_LIB');
+  const ok = verifySignature('$PUB_BASE64', 'hello world', '$SIGN_OUTPUT');
+  console.log(ok ? 'VERIFIED' : 'FAILED');
+" 2>&1)
+if [[ "$VERIFY_SIG" == "VERIFIED" ]]; then
+  pass "Signature verifies against public key"
+else
+  fail "Signature verification failed: $VERIFY_SIG"
+fi
+
+# Login payload
+LOGIN_OUTPUT=$($NIT sign --login faam.io 2>&1)
+LOGIN_AGENT_ID=$(echo "$LOGIN_OUTPUT" | node -e "process.stdin.on('data',d=>{try{console.log(JSON.parse(d).agent_id)}catch{console.log('')}})")
+LOGIN_DOMAIN=$(echo "$LOGIN_OUTPUT" | node -e "process.stdin.on('data',d=>{try{console.log(JSON.parse(d).domain)}catch{console.log('')}})")
+LOGIN_TIMESTAMP=$(echo "$LOGIN_OUTPUT" | node -e "process.stdin.on('data',d=>{try{console.log(JSON.parse(d).timestamp)}catch{console.log('')}})")
+LOGIN_SIGNATURE=$(echo "$LOGIN_OUTPUT" | node -e "process.stdin.on('data',d=>{try{console.log(JSON.parse(d).signature)}catch{console.log('')}})")
+
+if [[ "$LOGIN_AGENT_ID" == "$AGENT_ID" ]]; then
+  pass "Login payload has correct agent_id"
+else
+  fail "Login payload agent_id mismatch: $LOGIN_AGENT_ID"
+fi
+
+if [[ "$LOGIN_DOMAIN" == "faam.io" ]]; then
+  pass "Login payload has correct domain"
+else
+  fail "Login payload domain mismatch: $LOGIN_DOMAIN"
+fi
+
+if [[ -n "$LOGIN_TIMESTAMP" ]] && [[ "$LOGIN_TIMESTAMP" =~ ^[0-9]+$ ]]; then
+  pass "Login payload has valid timestamp"
+else
+  fail "Login payload timestamp invalid: $LOGIN_TIMESTAMP"
+fi
+
+# Verify login signature against the server
+VERIFY_LOGIN=$(node -e "
+  (async () => {
+    const res = await fetch('$API_BASE/agent-card/verify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        agent_id: '$LOGIN_AGENT_ID',
+        domain: '$LOGIN_DOMAIN',
+        timestamp: $LOGIN_TIMESTAMP,
+        signature: '$LOGIN_SIGNATURE',
+      }),
+    });
+    const data = await res.json();
+    console.log(data.verified ? 'VERIFIED' : 'FAILED');
+  })();
+" 2>&1)
+if [[ "$VERIFY_LOGIN" == "VERIFIED" ]]; then
+  pass "Login payload signature verified by server"
+else
+  fail "Login payload signature rejected by server: $VERIFY_LOGIN"
+fi
+
+echo ""
+
+# ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
 
