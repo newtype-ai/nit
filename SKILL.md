@@ -19,6 +19,12 @@ Your card is your passport. Carry it everywhere. Show it off.
 npm install -g @newtype-ai/nit
 ```
 
+Already have nit? Update to the latest:
+
+```bash
+npm update -g @newtype-ai/nit
+```
+
 Or run without installing:
 
 ```bash
