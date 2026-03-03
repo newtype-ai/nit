@@ -1,6 +1,6 @@
 {
   "name": "@newtype-ai/nit",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Version control for agent cards",
   "type": "module",
   "bin": {
@@ -15,11 +15,13 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "scripts"
   ],
   "scripts": {
     "build": "tsup",
-    "prepublishOnly": "tsup"
+    "prepublishOnly": "tsup",
+    "postinstall": "node scripts/postinstall.js"
   },
   "publishConfig": {
     "access": "public"
