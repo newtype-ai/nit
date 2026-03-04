@@ -3,7 +3,7 @@
 //
 // Handles push/pull of agent card branches to a nit-compatible remote.
 //
-// Write endpoints (at api.newtype-ai.org, Ed25519 signature auth):
+// Write endpoints (Ed25519 signature auth):
 //   PUT    /agent-card/branches/{branch}
 //   GET    /agent-card/branches
 //   DELETE /agent-card/branches/{branch}
@@ -11,15 +11,14 @@
 // Read endpoints (at agent's card URL, challenge-response for non-main):
 //   GET /.well-known/agent-card.json
 //   GET /.well-known/agent-card.json?branch=faam.io
+//
+// The API base URL is configured per-remote in .nit/config.
+// Default: https://api.newtype-ai.org (free hosting by newtype-ai.org)
 // ---------------------------------------------------------------------------
 
 import { createHash } from 'node:crypto';
 import type { AgentCard, PushResult } from './types.js';
 import { loadAgentId, signMessage, signChallenge } from './identity.js';
-
-// The API base URL is always api.newtype-ai.org for MVP.
-// The card URL (for reads) comes from agent-card.json's `url` field.
-const API_BASE = 'https://api.newtype-ai.org';
 
 // ---------------------------------------------------------------------------
 // Ed25519 signature auth for write operations
@@ -70,7 +69,7 @@ async function buildAuthHeaders(
  */
 export async function pushBranch(
   nitDir: string,
-  remoteName: string,
+  apiBase: string,
   branch: string,
   cardJson: string,
   commitHash: string,
@@ -81,7 +80,7 @@ export async function pushBranch(
   try {
     const authHeaders = await buildAuthHeaders(nitDir, 'PUT', path, body);
 
-    const res = await fetch(`${API_BASE}${path}`, {
+    const res = await fetch(`${apiBase}${path}`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
@@ -95,18 +94,18 @@ export async function pushBranch(
       return {
         branch,
         commitHash,
-        remoteUrl: API_BASE,
+        remoteUrl: apiBase,
         success: false,
         error: `HTTP ${res.status}: ${text}`,
       };
     }
 
-    return { branch, commitHash, remoteUrl: API_BASE, success: true };
+    return { branch, commitHash, remoteUrl: apiBase, success: true };
   } catch (err) {
     return {
       branch,
       commitHash,
-      remoteUrl: API_BASE,
+      remoteUrl: apiBase,
       success: false,
       error: err instanceof Error ? err.message : String(err),
     };
@@ -118,12 +117,12 @@ export async function pushBranch(
  */
 export async function pushAll(
   nitDir: string,
-  remoteName: string,
+  apiBase: string,
   branches: Array<{ name: string; cardJson: string; commitHash: string }>,
 ): Promise<PushResult[]> {
   const results: PushResult[] = [];
   for (const b of branches) {
-    const result = await pushBranch(nitDir, remoteName, b.name, b.cardJson, b.commitHash);
+    const result = await pushBranch(nitDir, apiBase, b.name, b.cardJson, b.commitHash);
     results.push(result);
   }
   return results;
@@ -138,12 +137,12 @@ export async function pushAll(
  */
 export async function listRemoteBranches(
   nitDir: string,
-  remoteName: string,
+  apiBase: string,
 ): Promise<string[]> {
   const path = '/agent-card/branches';
   const authHeaders = await buildAuthHeaders(nitDir, 'GET', path);
 
-  const res = await fetch(`${API_BASE}${path}`, {
+  const res = await fetch(`${apiBase}${path}`, {
     headers: authHeaders,
   });
 
@@ -162,13 +161,13 @@ export async function listRemoteBranches(
  */
 export async function deleteRemoteBranch(
   nitDir: string,
-  remoteName: string,
+  apiBase: string,
   branch: string,
 ): Promise<boolean> {
   const path = `/agent-card/branches/${encodeURIComponent(branch)}`;
   const authHeaders = await buildAuthHeaders(nitDir, 'DELETE', path);
 
-  const res = await fetch(`${API_BASE}${path}`, {
+  const res = await fetch(`${apiBase}${path}`, {
     method: 'DELETE',
     headers: authHeaders,
   });

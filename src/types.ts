@@ -44,6 +44,8 @@ export interface NitHead {
 
 /** Remote configuration for a single named remote. */
 export interface NitRemoteConfig {
+  /** API base URL (e.g. "https://api.newtype-ai.org") */
+  url?: string;
   /** Legacy field — push auth is now via Ed25519 keypair */
   credential?: string;
 }

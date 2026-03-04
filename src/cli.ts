@@ -15,6 +15,8 @@ import {
   checkout,
   push,
   remote,
+  remoteAdd,
+  remoteSetUrl,
   sign,
   loginPayload,
 } from './index.js';
@@ -219,6 +221,38 @@ async function cmdPush(args: string[]) {
 }
 
 async function cmdRemote(args: string[]) {
+  const subcommand = args[0];
+
+  if (subcommand === 'set-url') {
+    const name = args[1];
+    const url = args[2];
+    if (!name || !url) {
+      console.error('Usage: nit remote set-url <name> <url>');
+      process.exit(1);
+    }
+    await remoteSetUrl(name, url);
+    console.log(`Set URL for '${name}' to ${url}`);
+    return;
+  }
+
+  if (subcommand === 'add') {
+    const name = args[1];
+    const url = args[2];
+    if (!name || !url) {
+      console.error('Usage: nit remote add <name> <url>');
+      process.exit(1);
+    }
+    await remoteAdd(name, url);
+    console.log(`Added remote '${green(name)}' → ${url}`);
+    return;
+  }
+
+  if (subcommand) {
+    console.error(`nit remote: unknown subcommand '${subcommand}'`);
+    console.error('Usage: nit remote [set-url <name> <url> | add <name> <url>]');
+    process.exit(1);
+  }
+
   // Default: show remote info
   const info = await remote();
 
@@ -276,6 +310,8 @@ ${bold('Commands:')}
   sign "message"     Sign a message with your Ed25519 key
   sign --login <dom> Generate login payload for an app
   remote             Show remote info
+  remote add <n> <u> Add a new remote
+  remote set-url <n> <u>  Change remote URL
 
 ${bold('Examples:')}
   nit init

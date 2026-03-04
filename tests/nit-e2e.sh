@@ -143,6 +143,48 @@ fi
 echo ""
 
 # ---------------------------------------------------------------------------
+# Test 1b: remote config after init
+# ---------------------------------------------------------------------------
+
+echo "── Test 1b: remote config ───────────────────────────────"
+
+# Verify default remote URL in config
+if grep -q "url = https://api.newtype-ai.org" .nit/config; then
+  pass "Default remote URL set in config"
+else
+  fail "Default remote URL missing from config"
+fi
+
+# Verify nit remote shows the URL
+REMOTE_OUTPUT=$($NIT remote 2>&1)
+if echo "$REMOTE_OUTPUT" | grep -q "https://api.newtype-ai.org"; then
+  pass "nit remote shows default URL"
+else
+  fail "nit remote missing default URL"
+fi
+
+# Test set-url
+$NIT remote set-url origin https://example.com 2>&1
+if grep -q "url = https://example.com" .nit/config; then
+  pass "set-url updated config"
+else
+  fail "set-url did not update config"
+fi
+
+# Test add
+$NIT remote add backup https://backup.example.com 2>&1
+if grep -q 'remote "backup"' .nit/config && grep -q "url = https://backup.example.com" .nit/config; then
+  pass "remote add created new remote"
+else
+  fail "remote add did not create new remote"
+fi
+
+# Restore default URL for remaining tests
+$NIT remote set-url origin https://api.newtype-ai.org 2>&1
+
+echo ""
+
+# ---------------------------------------------------------------------------
 # Test 2: nit status
 # ---------------------------------------------------------------------------
 

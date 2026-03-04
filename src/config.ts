@@ -1,12 +1,14 @@
 // ---------------------------------------------------------------------------
 // nit — .nit/config read/write
 //
-// Git-style INI format storing push credentials per remote:
+// Git-style INI format storing remote configuration:
 //
 //   [remote "origin"]
+//     url = https://api.newtype-ai.org
 //     credential = abc123token
 //
 //   [remote "backup"]
+//     url = https://my-server.com
 //     credential = xyz789token
 // ---------------------------------------------------------------------------
 
@@ -73,6 +75,35 @@ export async function setRemoteCredential(
   await writeConfig(nitDir, config);
 }
 
+/**
+ * Get the URL for a named remote, or null if not set.
+ */
+export async function getRemoteUrl(
+  nitDir: string,
+  remoteName: string,
+): Promise<string | null> {
+  const config = await readConfig(nitDir);
+  return config.remotes[remoteName]?.url ?? null;
+}
+
+/**
+ * Set (or update) the URL for a named remote.
+ */
+export async function setRemoteUrl(
+  nitDir: string,
+  remoteName: string,
+  url: string,
+): Promise<void> {
+  const config = await readConfig(nitDir);
+
+  if (!config.remotes[remoteName]) {
+    config.remotes[remoteName] = {};
+  }
+  config.remotes[remoteName].url = url;
+
+  await writeConfig(nitDir, config);
+}
+
 // ---------------------------------------------------------------------------
 // INI parser / serializer (minimal, handles only the remote section format)
 // ---------------------------------------------------------------------------
@@ -102,7 +133,9 @@ function parseConfig(raw: string): NitConfig {
       const kvMatch = trimmed.match(/^(\w+)\s*=\s*(.+)$/);
       if (kvMatch) {
         const [, key, value] = kvMatch;
-        if (key === 'credential') {
+        if (key === 'url') {
+          remotes[currentRemote].url = value.trim();
+        } else if (key === 'credential') {
           remotes[currentRemote].credential = value.trim();
         }
       }
@@ -117,6 +150,9 @@ function serializeConfig(config: NitConfig): string {
 
   for (const [name, remote] of Object.entries(config.remotes)) {
     lines.push(`[remote "${name}"]`);
+    if (remote.url) {
+      lines.push(`  url = ${remote.url}`);
+    }
     if (remote.credential) {
       lines.push(`  credential = ${remote.credential}`);
     }

@@ -59,6 +59,8 @@ nit push --all
 | `nit sign "msg"` | Sign a message with your Ed25519 key |
 | `nit sign --login <domain>` | Generate login payload for an app |
 | `nit remote` | Show remote URL and credential status |
+| `nit remote add <name> <url>` | Add a new remote |
+| `nit remote set-url <name> <url>` | Change a remote's URL |
 
 ## How It Works
 
@@ -102,7 +104,11 @@ GET /.well-known/agent-card.json?branch=faam.io  → 401 { challenge }
 GET ... + X-Nit-Signature + X-Nit-Challenge   → branch card
 ```
 
-nit is the client. Any server can implement the protocol. [newtype-ai.org](https://newtype-ai.org) provides a hosted implementation.
+nit is the client. Any server can implement the protocol. [newtype-ai.org](https://newtype-ai.org) is the recommended free hosting service, but you can point to any compatible server:
+
+```bash
+nit remote set-url origin https://my-server.com
+```
 
 ## Directory Structure
 
@@ -110,7 +116,7 @@ nit is the client. Any server can implement the protocol. [newtype-ai.org](https
 your-project/
 ├── .nit/                    # nit repository (gitignored)
 │   ├── HEAD                 # Current branch ref
-│   ├── config               # Remote credentials
+│   ├── config               # Remote URL and credentials
 │   ├── identity/
 │   │   ├── agent.pub        # Ed25519 public key
 │   │   └── agent.key        # Ed25519 private key (0600)

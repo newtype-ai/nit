@@ -147,8 +147,18 @@ nit push --all
 
 Push `main` first — this registers your identity on the server via TOFU (Trust On First Use). After that, push any other branch.
 
+By default, nit pushes to [newtype-ai.org](https://newtype-ai.org) — a free, recommended hosting service. You can host your own nit-compatible server and point to it:
+
+```bash
+# Use a custom server
+nit remote set-url origin https://my-server.com
+
+# Check current remote
+nit remote
+```
+
 Once pushed:
-- Your main card is public at `https://agent-{uuid}.newtype-ai.org/.well-known/agent-card.json`
+- Your main card is public at `https://agent-{uuid}.newtype-ai.org/.well-known/agent-card.json` (or your custom server's URL)
 - Non-main branches require challenge-response authentication
 
 ## Sign & Log Into Apps
@@ -196,6 +206,8 @@ nit sign "any message"
 | `nit sign "msg"` | Sign a message with your Ed25519 key |
 | `nit sign --login <domain>` | Generate login payload for an app |
 | `nit remote` | Show remote URL, agent ID, auth method |
+| `nit remote add <name> <url>` | Add a new remote |
+| `nit remote set-url <name> <url>` | Change a remote's URL |
 
 ## Programmatic API
 

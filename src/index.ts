@@ -48,6 +48,7 @@ import {
   pushBranch as remotePushBranch,
   pushAll as remotePushAll,
 } from './remote.js';
+import { readConfig, writeConfig, getRemoteUrl } from './config.js';
 
 // Re-export types for consumers
 export type {
@@ -86,6 +87,7 @@ export { fetchBranchCard } from './remote.js';
 
 const NIT_DIR = '.nit';
 const CARD_FILE = 'agent-card.json';
+const DEFAULT_API_BASE = 'https://api.newtype-ai.org';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -290,8 +292,10 @@ export async function init(options?: {
   // Write empty logs/HEAD
   await fs.writeFile(join(nitDir, 'logs', 'HEAD'), '', 'utf-8');
 
-  // Write empty config
-  await fs.writeFile(join(nitDir, 'config'), '', 'utf-8');
+  // Write default remote config
+  await writeConfig(nitDir, {
+    remotes: { origin: { url: DEFAULT_API_BASE } },
+  });
 
   return {
     agentId,
@@ -641,6 +645,7 @@ export async function push(options?: {
 }): Promise<PushResult[]> {
   const nitDir = findNitDir(options?.projectDir);
   const remoteName = options?.remoteName || 'origin';
+  const apiBase = (await getRemoteUrl(nitDir, remoteName)) || DEFAULT_API_BASE;
   const branches = await listAllBranches(nitDir);
   const currentBranch = await getCurrentBranch(nitDir);
 
@@ -662,7 +667,7 @@ export async function push(options?: {
 
     const result = await remotePushBranch(
       nitDir,
-      remoteName,
+      apiBase,
       b.name,
       cardJson,
       b.commitHash,
@@ -690,19 +695,57 @@ export interface RemoteInfo {
 }
 
 /**
- * Show remote info. URL comes from agent-card.json, agent ID from .nit/identity/.
+ * Show remote info. URL comes from .nit/config, agent ID from .nit/identity/.
  */
 export async function remote(options?: {
   projectDir?: string;
 }): Promise<RemoteInfo> {
   const nitDir = findNitDir(options?.projectDir);
-  const card = await readWorkingCard(nitDir);
+  const remoteUrl = await getRemoteUrl(nitDir, 'origin');
   const agentId = await loadAgentId(nitDir);
 
   return {
     name: 'origin',
-    url: card.url || '(not set)',
+    url: remoteUrl || DEFAULT_API_BASE,
     agentId,
   };
+}
+
+/**
+ * Add a new named remote with a URL.
+ */
+export async function remoteAdd(
+  name: string,
+  url: string,
+  options?: { projectDir?: string },
+): Promise<void> {
+  const nitDir = findNitDir(options?.projectDir);
+  const config = await readConfig(nitDir);
+  if (config.remotes[name]) {
+    throw new Error(
+      `Remote "${name}" already exists. Use 'nit remote set-url ${name} <url>' to change it.`,
+    );
+  }
+  config.remotes[name] = { url };
+  await writeConfig(nitDir, config);
+}
+
+/**
+ * Change the URL for an existing remote.
+ */
+export async function remoteSetUrl(
+  name: string,
+  url: string,
+  options?: { projectDir?: string },
+): Promise<void> {
+  const nitDir = findNitDir(options?.projectDir);
+  const config = await readConfig(nitDir);
+  if (!config.remotes[name]) {
+    throw new Error(
+      `Remote "${name}" does not exist. Use 'nit remote add ${name} <url>' to create it.`,
+    );
+  }
+  config.remotes[name].url = url;
+  await writeConfig(nitDir, config);
 }
 
