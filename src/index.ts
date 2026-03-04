@@ -71,7 +71,6 @@ export type {
 export { diffCards, formatDiff } from './diff.js';
 export {
   signChallenge,
-  verifySignature,
   signMessage,
   formatPublicKeyField,
   parsePublicKeyField,

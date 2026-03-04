@@ -450,19 +450,6 @@ else
   fail "nit sign output doesn't look like base64: $SIGN_OUTPUT"
 fi
 
-# Verify the signature is correct
-PUB_BASE64=$(cat "$TEST_DIR/.nit/identity/agent.pub" | tr -d '\n')
-VERIFY_SIG=$(node -e "
-  const { verifySignature } = require('$NIT_LIB');
-  const ok = verifySignature('$PUB_BASE64', 'hello world', '$SIGN_OUTPUT');
-  console.log(ok ? 'VERIFIED' : 'FAILED');
-" 2>&1)
-if [[ "$VERIFY_SIG" == "VERIFIED" ]]; then
-  pass "Signature verifies against public key"
-else
-  fail "Signature verification failed: $VERIFY_SIG"
-fi
-
 # Login payload
 LOGIN_OUTPUT=$($NIT sign --login faam.io 2>&1)
 LOGIN_AGENT_ID=$(echo "$LOGIN_OUTPUT" | node -e "process.stdin.on('data',d=>{try{console.log(JSON.parse(d).agent_id)}catch{console.log('')}})")

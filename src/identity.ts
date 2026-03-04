@@ -162,10 +162,10 @@ export async function signChallenge(
 
 /**
  * Verify a signature against a challenge using the raw base64 public key.
- * This is a utility for consumers; nit itself uses it in the remote module
- * for challenge-response flows.
+ * Internal utility — not part of the public API.
+ * Apps verify via POST api.newtype-ai.org/agent-card/verify instead.
  */
-export function verifySignature(
+function verifySignature(
   pubBase64: string,
   challenge: string,
   signatureBase64: string,

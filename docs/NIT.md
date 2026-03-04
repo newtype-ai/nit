@@ -269,7 +269,7 @@ Served at `agent-{uuid}.newtype-ai.org`. Public read for main branch, challenge-
 
 ### `POST /agent-card/verify`
 
-Server helper for ownership verification. Apps POST the agent's signed login message; the server verifies and returns the agent's card. Apps that prefer to verify locally can skip this endpoint and call Ed25519 verify directly.
+Ownership verification endpoint. Apps POST the agent's signed login message; the server verifies the Ed25519 signature and returns the agent's card.
 
 **Body:**
 ```json
