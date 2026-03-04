@@ -54,6 +54,8 @@ export interface NitRemoteConfig {
 export interface NitConfig {
   /** Keyed by remote name (e.g. "origin") */
   remotes: Record<string, NitRemoteConfig>;
+  /** Discovered skills directory path */
+  skillsDir?: string;
 }
 
 /** A2A-compatible agent card. */
@@ -76,11 +78,13 @@ export interface AgentCard {
   };
 }
 
-/** A single skill entry in an agent card. */
+/** A single skill entry in an agent card.
+ *  Can be a full skill (all fields) or a pointer (just id).
+ *  At commit time, pointers are resolved from SKILL.md files. */
 export interface AgentCardSkill {
   id: string;
-  name: string;
-  description: string;
+  name?: string;
+  description?: string;
   tags?: string[];
   examples?: string[];
   inputModes?: string[];

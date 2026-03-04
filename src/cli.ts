@@ -93,6 +93,7 @@ async function cmdInit() {
   console.log(`  Agent ID:    ${green(result.agentId)}`);
   console.log(`  Public key:  ${dim(result.publicKey)}`);
   console.log(`  Card URL:    ${result.cardUrl}`);
+  console.log(`  Skills dir:  ${dim(result.skillsDir)}`);
   if (result.skillsFound.length > 0) {
     console.log(`  Skills:      ${result.skillsFound.join(', ')}`);
   } else {
@@ -275,7 +276,10 @@ async function cmdSign(args: string[]) {
     if (payload.switchedBranch) {
       console.error(`Switched to branch '${payload.switchedBranch}'`);
     }
-    const { switchedBranch: _, ...output } = payload;
+    if (payload.createdSkill) {
+      console.error(`Created skill template '${payload.createdSkill}'`);
+    }
+    const { switchedBranch: _s, createdSkill: _c, ...output } = payload;
     console.log(JSON.stringify(output, null, 2));
     return;
   }

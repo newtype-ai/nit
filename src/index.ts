@@ -42,13 +42,13 @@ import {
   saveAgentId,
   signMessage,
 } from './identity.js';
-import { discoverSkills, resolveSkillPointers } from './skills.js';
+import { discoverSkills, discoverSkillsDir, resolveSkillPointers, createSkillTemplate } from './skills.js';
 import { diffCards } from './diff.js';
 import {
   pushBranch as remotePushBranch,
   pushAll as remotePushAll,
 } from './remote.js';
-import { readConfig, writeConfig, getRemoteUrl } from './config.js';
+import { readConfig, writeConfig, getRemoteUrl, getSkillsDir } from './config.js';
 
 // Re-export types for consumers
 export type {
@@ -193,6 +193,7 @@ export interface InitResult {
   publicKey: string;
   cardUrl: string;
   skillsFound: string[];
+  skillsDir: string;
 }
 
 /**
@@ -292,9 +293,13 @@ export async function init(options?: {
   // Write empty logs/HEAD
   await fs.writeFile(join(nitDir, 'logs', 'HEAD'), '', 'utf-8');
 
-  // Write default remote config
+  // Discover and store skills directory
+  const skillsDir = await discoverSkillsDir(projDir);
+
+  // Write default config with remote + skills dir
   await writeConfig(nitDir, {
     remotes: { origin: { url: DEFAULT_API_BASE } },
+    skillsDir,
   });
 
   return {
@@ -302,6 +307,7 @@ export async function init(options?: {
     publicKey: publicKeyField,
     cardUrl: card.url,
     skillsFound,
+    skillsDir,
   };
 }
 
@@ -411,27 +417,44 @@ export async function sign(
 export async function loginPayload(
   domain: string,
   options?: { projectDir?: string },
-): Promise<import('./types.js').LoginPayload & { switchedBranch?: string }> {
+): Promise<import('./types.js').LoginPayload & { switchedBranch?: string; createdSkill?: string }> {
   const nitDir = findNitDir(options?.projectDir);
 
   // Auto-checkout domain branch
   let switchedBranch: string | undefined;
+  let createdSkill: string | undefined;
   const currentBranch = await getCurrentBranch(nitDir);
   if (currentBranch !== domain) {
-    const existing = await getBranch(nitDir, domain);
-    if (!existing) {
+    const isNew = !(await getBranch(nitDir, domain));
+    if (isNew) {
       const headHash = await resolveHead(nitDir);
       await setBranch(nitDir, domain, headHash);
     }
     await checkout(domain, options);
     switchedBranch = domain;
+
+    // Create a SKILL.md template for new branches
+    if (isNew) {
+      const skillsDir = await getSkillsDir(nitDir);
+      if (skillsDir) {
+        const skillId = await createSkillTemplate(skillsDir, domain);
+        // Add the skill pointer to the card
+        const card = await readWorkingCard(nitDir);
+        const hasSkill = card.skills.some((s) => s.id === skillId);
+        if (!hasSkill) {
+          card.skills.push({ id: skillId });
+          await writeWorkingCard(nitDir, card);
+          createdSkill = skillId;
+        }
+      }
+    }
   }
 
   const agentId = await loadAgentId(nitDir);
   const timestamp = Math.floor(Date.now() / 1000);
   const message = `${agentId}\n${domain}\n${timestamp}`;
   const signature = await signMessage(nitDir, message);
-  return { agent_id: agentId, domain, timestamp, signature, switchedBranch };
+  return { agent_id: agentId, domain, timestamp, signature, switchedBranch, createdSkill };
 }
 
 // ---------------------------------------------------------------------------

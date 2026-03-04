@@ -1,15 +1,14 @@
 // ---------------------------------------------------------------------------
 // nit — .nit/config read/write
 //
-// Git-style INI format storing remote configuration:
+// Git-style INI format storing configuration:
 //
 //   [remote "origin"]
 //     url = https://api.newtype-ai.org
 //     credential = abc123token
 //
-//   [remote "backup"]
-//     url = https://my-server.com
-//     credential = xyz789token
+//   [skills]
+//     dir = /home/agent/.claude/skills
 // ---------------------------------------------------------------------------
 
 import { promises as fs } from 'node:fs';
@@ -104,13 +103,37 @@ export async function setRemoteUrl(
   await writeConfig(nitDir, config);
 }
 
+/**
+ * Get the configured skills directory, or null if not set.
+ */
+export async function getSkillsDir(
+  nitDir: string,
+): Promise<string | null> {
+  const config = await readConfig(nitDir);
+  return config.skillsDir ?? null;
+}
+
+/**
+ * Set the skills directory in config.
+ */
+export async function setSkillsDir(
+  nitDir: string,
+  dir: string,
+): Promise<void> {
+  const config = await readConfig(nitDir);
+  config.skillsDir = dir;
+  await writeConfig(nitDir, config);
+}
+
 // ---------------------------------------------------------------------------
-// INI parser / serializer (minimal, handles only the remote section format)
+// INI parser / serializer
 // ---------------------------------------------------------------------------
 
 function parseConfig(raw: string): NitConfig {
   const remotes: Record<string, NitRemoteConfig> = {};
+  let currentSection: string | null = null;
   let currentRemote: string | null = null;
+  let skillsDir: string | undefined;
 
   for (const line of raw.split('\n')) {
     const trimmed = line.trim();
@@ -119,30 +142,42 @@ function parseConfig(raw: string): NitConfig {
     if (trimmed === '' || trimmed.startsWith('#')) continue;
 
     // Section header: [remote "name"]
-    const sectionMatch = trimmed.match(/^\[remote\s+"([^"]+)"\]$/);
-    if (sectionMatch) {
-      currentRemote = sectionMatch[1];
+    const remoteMatch = trimmed.match(/^\[remote\s+"([^"]+)"\]$/);
+    if (remoteMatch) {
+      currentSection = 'remote';
+      currentRemote = remoteMatch[1];
       if (!remotes[currentRemote]) {
         remotes[currentRemote] = {};
       }
       continue;
     }
 
+    // Section header: [skills]
+    if (trimmed === '[skills]') {
+      currentSection = 'skills';
+      currentRemote = null;
+      continue;
+    }
+
     // Key-value pair: key = value
-    if (currentRemote !== null) {
-      const kvMatch = trimmed.match(/^(\w+)\s*=\s*(.+)$/);
-      if (kvMatch) {
-        const [, key, value] = kvMatch;
+    const kvMatch = trimmed.match(/^(\w+)\s*=\s*(.+)$/);
+    if (kvMatch) {
+      const [, key, value] = kvMatch;
+      if (currentSection === 'remote' && currentRemote !== null) {
         if (key === 'url') {
           remotes[currentRemote].url = value.trim();
         } else if (key === 'credential') {
           remotes[currentRemote].credential = value.trim();
         }
+      } else if (currentSection === 'skills') {
+        if (key === 'dir') {
+          skillsDir = value.trim();
+        }
       }
     }
   }
 
-  return { remotes };
+  return { remotes, skillsDir };
 }
 
 function serializeConfig(config: NitConfig): string {
@@ -156,6 +191,12 @@ function serializeConfig(config: NitConfig): string {
     if (remote.credential) {
       lines.push(`  credential = ${remote.credential}`);
     }
+    lines.push('');
+  }
+
+  if (config.skillsDir) {
+    lines.push('[skills]');
+    lines.push(`  dir = ${config.skillsDir}`);
     lines.push('');
   }
 

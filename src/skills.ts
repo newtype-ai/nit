@@ -22,9 +22,112 @@
 // ---------------------------------------------------------------------------
 
 import { promises as fs } from 'node:fs';
-import { join, basename, dirname } from 'node:path';
+import { join, basename, dirname, resolve } from 'node:path';
 import { homedir } from 'node:os';
 import type { AgentCard, SkillMetadata } from './types.js';
+
+// ---------------------------------------------------------------------------
+// Framework detection and skills directory discovery
+// ---------------------------------------------------------------------------
+
+/** Known framework directory markers and their skills subdirectory. */
+const FRAMEWORK_MARKERS: Array<{ marker: string; skillsPath: string }> = [
+  { marker: '.claude', skillsPath: '.claude/skills' },
+  { marker: '.cursor', skillsPath: '.cursor/skills' },
+  { marker: '.codex', skillsPath: '.codex/skills' },
+  { marker: '.windsurf', skillsPath: '.windsurf/skills' },
+  { marker: '.openclaw', skillsPath: '.agents/skills' },
+];
+
+const GLOBAL_SKILLS_DIRS = [
+  { marker: '.claude', skillsPath: '.claude/skills' },
+  { marker: '.codex', skillsPath: '.codex/skills' },
+  { marker: '.codeium', skillsPath: '.codeium/windsurf/skills' },
+];
+
+/**
+ * Detect the skills directory for this nit repository.
+ *
+ * Detection layers:
+ *   1. Path-based: nit repo's own path reveals the framework
+ *   2. Project-local: check for framework directories at project level
+ *   3. User-global: check for framework directories at ~/
+ *   4. Fallback: <projectDir>/.agents/skills/
+ */
+export async function discoverSkillsDir(
+  projectDir: string,
+): Promise<string> {
+  const absProject = resolve(projectDir);
+  const home = homedir();
+
+  // Layer 1: Detect from nit repo's location (path contains framework marker)
+  for (const { marker, skillsPath } of FRAMEWORK_MARKERS) {
+    if (absProject.includes(`/${marker}/`) || absProject.includes(`/${marker}`)) {
+      return join(absProject, skillsPath);
+    }
+  }
+
+  // Layer 2: Detect from framework directories at project level
+  for (const { marker, skillsPath } of FRAMEWORK_MARKERS) {
+    try {
+      const stat = await fs.stat(join(absProject, marker));
+      if (stat.isDirectory()) {
+        return join(absProject, skillsPath);
+      }
+    } catch {
+      // Directory doesn't exist — try next
+    }
+  }
+
+  // Layer 3: Detect from user-global framework directories
+  for (const { marker, skillsPath } of GLOBAL_SKILLS_DIRS) {
+    try {
+      const stat = await fs.stat(join(home, marker));
+      if (stat.isDirectory()) {
+        return join(home, skillsPath);
+      }
+    } catch {
+      // Directory doesn't exist — try next
+    }
+  }
+
+  // Fallback: generic .agents/skills/ at project level
+  return join(absProject, '.agents', 'skills');
+}
+
+/**
+ * Create a template SKILL.md for a new branch/environment.
+ * Returns the skill ID (sanitized directory name).
+ */
+export async function createSkillTemplate(
+  skillsDir: string,
+  domain: string,
+): Promise<string> {
+  const skillId = domain.replace(/\./g, '-');
+  const skillDir = join(skillsDir, skillId);
+  const skillPath = join(skillDir, 'SKILL.md');
+
+  // Don't overwrite existing skill
+  try {
+    await fs.access(skillPath);
+    return skillId; // Already exists
+  } catch {
+    // Doesn't exist — create it
+  }
+
+  await fs.mkdir(skillDir, { recursive: true });
+  const template = `---
+name: ${skillId}
+description: Skills and context for ${domain}
+---
+
+# ${skillId}
+
+Configure your skills and context for ${domain} here.
+`;
+  await fs.writeFile(skillPath, template, 'utf-8');
+  return skillId;
+}
 
 /**
  * Discover all SKILL.md files from standard locations.
@@ -65,9 +168,11 @@ export async function discoverSkills(
 }
 
 /**
- * For each skill in the card, look up the matching SKILL.md and update
+ * For each skill in the card, look up the matching SKILL.md and resolve
  * name/description from its frontmatter. Returns a new card (immutable).
  *
+ * Supports both full skills and pointer-only skills ({ id: "..." }).
+ * SKILL.md is the source of truth — its data always wins when present.
  * Skills without a matching SKILL.md are kept as-is.
  */
 export async function resolveSkillPointers(
