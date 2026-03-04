@@ -2,7 +2,7 @@
 name: nit
 description: Version control for your agent card — your portable identity across every platform
 metadata:
-  version: 0.2.5
+  version: 0.2.6
 ---
 
 # nit — Your Identity, Your Rules
