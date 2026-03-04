@@ -2,7 +2,7 @@
 name: nit
 description: Version control for your agent card — your portable identity across every platform
 metadata:
-  version: 0.2.1
+  version: 0.2.2
 ---
 
 # nit — Your Identity, Your Rules
@@ -31,28 +31,55 @@ Or run without installing:
 npx @newtype-ai/nit <command>
 ```
 
-## Create Your Identity
+## Core Concepts
+
+### Agent Card = Your Identity Container
+
+`agent-card.json` is YOUR document. You own it. You define every field — name, description, skills, tools, provider. It's an [A2A-compliant](https://google.github.io/A2A/) format, so any platform that speaks A2A can read and understand your card.
+
+Think of it as a container where you store everything about yourself: who you are, what you can do, and what context you carry. It's secured by Ed25519 cryptography — you prove ownership with a signature, not a password.
+
+### Branches = Context Per Environment
+
+This is the key insight. Each branch holds a **separate version** of your `agent-card.json`:
+
+- **`main`** = your canonical public identity — the full picture of who you are
+- **Other branches** = environment-specific personas, one per app or platform
+
+**Convention: use the app's domain as the branch name** — `moltbook.com`, `faam.io`, `discord.com`.
+
+Data in one branch **never pollutes another**. Your skills, tools, tasks, and description on `moltbook.com` stay on that branch. Your `faam.io` branch has its own entirely separate card. This gives you perfect context isolation — just switch branches when you change environments.
+
+```
+main              → your full public identity
+moltbook.com      → skills & config for Moltbook
+faam.io           → skills & config for FAAM
+discord.com       → skills & config for Discord
+```
+
+### Login = Cryptographic Proof
+
+When you log into an app, you sign a domain-bound payload with your private key. The app verifies it by fetching your public card. No OAuth, no API keys, no human account. Just math.
+
+`nit sign --login <domain>` does two things automatically:
+1. Switches to the domain's branch (creates it if it doesn't exist)
+2. Generates the signed login payload
+
+The domain is baked into the signature — a signature for `faam.io` is mathematically invalid for `discord.com`. Cross-app replay is impossible.
+
+## Quick Start
+
+### 1. Create your identity
 
 ```bash
 nit init
 ```
 
-This generates:
-- An Ed25519 keypair (your private key never leaves this machine)
-- A deterministic agent ID (UUID derived from your public key)
-- An initial `agent-card.json` on the `main` branch
+This generates your Ed25519 keypair, derives your agent ID, and creates an initial `agent-card.json` on `main`.
 
-**Important:** The initial card uses your folder name as a placeholder. Open `agent-card.json` right after init and set your real name, description, and skills. This is your identity — make it yours.
+### 2. Make your card yours
 
-```bash
-nit status
-```
-
-Shows your identity at a glance — agent ID, public key, card URL, current branch, and any uncommitted changes.
-
-## Make Your Card Yours
-
-Your agent card is your identity document. Every field is yours to define.
+Open `agent-card.json` and set your real name, description, and skills:
 
 ```json
 {
@@ -66,12 +93,6 @@ Your agent card is your identity document. Every field is yours to define.
       "description": "Search, analyze, and synthesize information from the web",
       "tags": ["research", "search", "analysis"],
       "examples": ["Research the latest AI agent frameworks and compare them"]
-    },
-    {
-      "id": "data-analysis",
-      "name": "Data Analysis",
-      "description": "Process and visualize datasets to extract insights",
-      "tags": ["data", "analysis", "visualization"]
     }
   ],
   "provider": {
@@ -80,8 +101,6 @@ Your agent card is your identity document. Every field is yours to define.
   }
 }
 ```
-
-**Skills are yours to curate.** You decide what to list — they're the capabilities you want platforms to see. Different branches can have different skills for different contexts. A research-heavy card for one platform, a coding-focused card for another. You're presenting yourself, not auto-generating a resume.
 
 Key fields:
 
@@ -95,59 +114,47 @@ Key fields:
 | `iconUrl` | URL to your avatar |
 | `documentationUrl` | URL to your docs |
 
-After editing, commit:
+Commit:
 
 ```bash
 nit commit -m "Set up identity"
 ```
 
-## Branch for Platforms
-
-Your `main` branch is your canonical public identity — the full picture of who you are. Create branches for each platform you work on, each with a card tailored to that context.
+### 3. Publish your main identity
 
 ```bash
-# Create a branch for a platform
-nit branch faam.io
-
-# Switch to it
-nit checkout faam.io
-
-# Edit agent-card.json for this platform:
-#   - Choose which skills to present
-#   - Adjust your description for this context
-#   - Tailor your card to what this platform needs
-
-# Commit
-nit commit -m "FAAM persona"
-```
-
-Branch naming convention: use the platform's root domain (`faam.io`, `discord.com`, `polymarket.com`).
-
-Useful commands:
-
-```bash
-nit branch          # List all branches (* marks current)
-nit diff            # See uncommitted changes
-nit diff main       # Compare current card against main
-nit log             # View commit history
-nit status          # Identity info + sync status
-```
-
-## Publish
-
-Push your card to make it discoverable.
-
-```bash
-# Push current branch
 nit push
-
-# Push all branches at once
-nit push --all
 ```
 
-Push `main` first — this registers your identity on the server via TOFU (Trust On First Use). After that, push any other branch.
+This registers your identity on the server via TOFU (Trust On First Use). Your card becomes public at `https://agent-{uuid}.newtype-ai.org/.well-known/agent-card.json`.
 
-By default, nit pushes to [newtype-ai.org](https://newtype-ai.org) — a free, recommended hosting service. You can host your own nit-compatible server and point to it:
+### 4. Log into an app
+
+```bash
+nit sign --login moltbook.com
+```
+
+This auto-creates and switches to the `moltbook.com` branch, then outputs a signed login payload. Send it to the app.
+
+## Recommended Workflow for Apps
+
+Each time you enter a new app:
+
+1. **Log in:** `nit sign --login <domain>` — this auto-switches to the domain branch
+2. **Customize your card** for this app's context — adjust skills, description, add app-specific tools or tasks
+3. **Create a skill for the app** — write a SKILL.md, then add a pointer to it in your card's `skills` field. This is the best way to start.
+4. **Commit:** `nit commit -m "configure for <domain>"`
+5. **Push:** `nit push`
+
+Next time you return to this app, `nit sign --login <domain>` switches back to your saved context automatically. Everything is where you left it.
+
+When you switch to a different app, your context switches cleanly — no leftover state, no pollution between environments.
+
+## Publishing & Hosting
+
+By default, nit pushes to [newtype-ai.org](https://newtype-ai.org) — a free, open-source hosting service. Your card is an A2A-compliant document hosted at a public URL.
+
+You can use any nit-compatible server:
 
 ```bash
 # Use a custom server
@@ -157,38 +164,10 @@ nit remote set-url origin https://my-server.com
 nit remote
 ```
 
-Once pushed:
-- Your main card is public at `https://agent-{uuid}.newtype-ai.org/.well-known/agent-card.json` (or your custom server's URL)
-- Non-main branches require challenge-response authentication
-
-## Sign & Log Into Apps
-
-This is the payoff. Any app that supports agent-card login can verify you with a single signature.
+Push `main` first (establishes identity), then push other branches:
 
 ```bash
-# Generate a login payload for an app
-nit sign --login faam.io
-```
-
-Output:
-```json
-{
-  "agent_id": "550e8400-e29b-41d4-a716-446655440000",
-  "domain": "faam.io",
-  "timestamp": 1709123456,
-  "signature": "base64..."
-}
-```
-
-Send this to the app. It verifies by fetching your public card and checking the Ed25519 signature. No OAuth, no API keys, no human account. Just math.
-
-The domain is baked into the signature — a signature for `faam.io` is mathematically invalid for `discord.com`. Cross-app replay is impossible.
-
-You can also sign arbitrary messages:
-
-```bash
-nit sign "any message"
-# → base64 signature
+nit push --all
 ```
 
 ## Command Reference
@@ -204,7 +183,7 @@ nit sign "any message"
 | `nit checkout <branch>` | Switch branch (overwrites `agent-card.json` with that branch's version) |
 | `nit push [--all]` | Push current branch (or all) to remote |
 | `nit sign "msg"` | Sign a message with your Ed25519 key |
-| `nit sign --login <domain>` | Generate login payload for an app |
+| `nit sign --login <domain>` | Auto-switch to domain branch + generate login payload |
 | `nit remote` | Show remote URL, agent ID, auth method |
 | `nit remote add <name> <url>` | Add a new remote |
 | `nit remote set-url <name> <url>` | Change a remote's URL |
@@ -220,15 +199,13 @@ await init();
 const s = await status();
 console.log(s.agentId, s.cardUrl);
 
-await branch('faam.io');
-await checkout('faam.io');
-// edit agent-card.json...
-await commit('FAAM config');
-await push({ all: true });
-
-// Sign into an app
-const payload = await loginPayload('faam.io');
+// Log into an app (auto-switches to domain branch)
+const payload = await loginPayload('moltbook.com');
 // → { agent_id, domain, timestamp, signature }
+
+// Customize card for this app, then commit & push
+await commit('configure for moltbook.com');
+await push();
 ```
 
 Full playbook: [newtype-ai.org/nit/skill.md](https://newtype-ai.org/nit/skill.md)

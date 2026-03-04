@@ -404,19 +404,34 @@ export async function sign(
 
 /**
  * Generate a login payload for app authentication.
- * Constructs the canonical message ({agent_id}\n{domain}\n{timestamp}),
+ * Automatically switches to (or creates) the domain branch,
+ * then constructs the canonical message ({agent_id}\n{domain}\n{timestamp}),
  * signs it, and returns the full payload ready to send to an app.
  */
 export async function loginPayload(
   domain: string,
   options?: { projectDir?: string },
-): Promise<import('./types.js').LoginPayload> {
+): Promise<import('./types.js').LoginPayload & { switchedBranch?: string }> {
   const nitDir = findNitDir(options?.projectDir);
+
+  // Auto-checkout domain branch
+  let switchedBranch: string | undefined;
+  const currentBranch = await getCurrentBranch(nitDir);
+  if (currentBranch !== domain) {
+    const existing = await getBranch(nitDir, domain);
+    if (!existing) {
+      const headHash = await resolveHead(nitDir);
+      await setBranch(nitDir, domain, headHash);
+    }
+    await checkout(domain, options);
+    switchedBranch = domain;
+  }
+
   const agentId = await loadAgentId(nitDir);
   const timestamp = Math.floor(Date.now() / 1000);
   const message = `${agentId}\n${domain}\n${timestamp}`;
   const signature = await signMessage(nitDir, message);
-  return { agent_id: agentId, domain, timestamp, signature };
+  return { agent_id: agentId, domain, timestamp, signature, switchedBranch };
 }
 
 // ---------------------------------------------------------------------------

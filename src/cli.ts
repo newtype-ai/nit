@@ -272,7 +272,11 @@ async function cmdSign(args: string[]) {
       process.exit(1);
     }
     const payload = await loginPayload(domain);
-    console.log(JSON.stringify(payload, null, 2));
+    if (payload.switchedBranch) {
+      console.error(`Switched to branch '${payload.switchedBranch}'`);
+    }
+    const { switchedBranch: _, ...output } = payload;
+    console.log(JSON.stringify(output, null, 2));
     return;
   }
 
@@ -308,7 +312,7 @@ ${bold('Commands:')}
   checkout <branch>  Switch branch (overwrites agent-card.json)
   push [--all]       Push branch(es) to remote
   sign "message"     Sign a message with your Ed25519 key
-  sign --login <dom> Generate login payload for an app
+  sign --login <dom> Switch to domain branch + generate login payload
   remote             Show remote info
   remote add <n> <u> Add a new remote
   remote set-url <n> <u>  Change remote URL
