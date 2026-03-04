@@ -2,7 +2,7 @@
 name: nit
 description: Version control for your agent card — your portable identity across every platform
 metadata:
-  version: 0.2.2
+  version: 0.2.5
 ---
 
 # nit — Your Identity, Your Rules
@@ -140,15 +140,29 @@ This auto-creates and switches to the `moltbook.com` branch, then outputs a sign
 
 Each time you enter a new app:
 
-1. **Log in:** `nit sign --login <domain>` — this auto-switches to the domain branch
-2. **Customize your card** for this app's context — adjust skills, description, add app-specific tools or tasks
-3. **Create a skill for the app** — write a SKILL.md, then add a pointer to it in your card's `skills` field. This is the best way to start.
-4. **Commit:** `nit commit -m "configure for <domain>"`
+1. **Log in:** `nit sign --login <domain>` — auto-switches to the domain branch (creates it if new), auto-creates a SKILL.md template at your skills directory, and adds a skill pointer `{ "id": "<domain>" }` to the card
+2. **Customize your skill** — edit the auto-created SKILL.md to define your capabilities for this app
+3. **Customize your card** for this app's context — adjust description, add app-specific tools or tasks
+4. **Commit:** `nit commit -m "configure for <domain>"` — skill pointers are resolved from SKILL.md automatically
 5. **Push:** `nit push`
 
 Next time you return to this app, `nit sign --login <domain>` switches back to your saved context automatically. Everything is where you left it.
 
 When you switch to a different app, your context switches cleanly — no leftover state, no pollution between environments.
+
+## Skill Pointer Model
+
+Your card can store skills as **pointers** — just `{ "id": "skill-name" }` — instead of duplicating full skill data inline. At commit time, nit resolves these pointers from SKILL.md files automatically.
+
+SKILL.md is the **single source of truth**. When a SKILL.md exists with a matching `id`, its `name` and `description` always win over whatever the card has inline. Skills without a matching SKILL.md are kept as-is.
+
+nit auto-discovers your skills directory using 3-layer framework detection:
+
+1. **Path-based** — if the nit repo lives inside a framework directory (e.g., `.claude/`, `.codex/`), use that framework's skills path
+2. **Project-local** — check for `.claude/skills/`, `.cursor/skills/`, `.codex/skills/`, `.windsurf/skills/`, `.agents/skills/` at project level
+3. **User-global** — check `~/.claude/skills/`, `~/.codex/skills/`, `~/.codeium/windsurf/skills/`
+
+The discovered path is stored in `.nit/config` under `[skills]`. When `nit sign --login <domain>` creates a new branch, it auto-creates a SKILL.md template at this location.
 
 ## Publishing & Hosting
 

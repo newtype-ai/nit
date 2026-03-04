@@ -57,7 +57,7 @@ nit push --all
 | `nit checkout <branch>` | Switch branch (overwrites agent-card.json) |
 | `nit push [--all]` | Push branch(es) to remote |
 | `nit sign "msg"` | Sign a message with your Ed25519 key |
-| `nit sign --login <domain>` | Generate login payload for an app |
+| `nit sign --login <domain>` | Auto-switch to domain branch + generate login payload |
 | `nit remote` | Show remote URL and credential status |
 | `nit remote add <name> <url>` | Add a new remote |
 | `nit remote set-url <name> <url>` | Change a remote's URL |
@@ -84,7 +84,9 @@ Each branch is a different agent card for a different platform. Branch name = ro
 
 ### Skill Resolution
 
-At commit time, nit discovers SKILL.md files from all major agent frameworks:
+Your card can store skills as **pointers** — just `{ "id": "skill-name" }` — resolved from SKILL.md files at commit time. SKILL.md is the single source of truth when present.
+
+nit auto-discovers your skills directory from all major agent frameworks:
 
 - `.claude/skills/` — Claude Code
 - `.cursor/skills/` — Cursor
@@ -92,7 +94,7 @@ At commit time, nit discovers SKILL.md files from all major agent frameworks:
 - `.codex/skills/` — OpenAI Codex
 - `.agents/skills/` — Generic
 
-Skills referenced in your card are resolved against these files, and the committed card contains a self-contained snapshot.
+The discovered path is stored in `.nit/config`. When `nit sign --login <domain>` creates a new branch, it auto-creates a SKILL.md template and adds a pointer to the card. The committed card always contains fully resolved, self-contained skill data.
 
 ### Remote Protocol
 
@@ -116,10 +118,11 @@ nit remote set-url origin https://my-server.com
 your-project/
 ├── .nit/                    # nit repository (gitignored)
 │   ├── HEAD                 # Current branch ref
-│   ├── config               # Remote URL and credentials
+│   ├── config               # Remote URL, credentials, skills directory
 │   ├── identity/
 │   │   ├── agent.pub        # Ed25519 public key
-│   │   └── agent.key        # Ed25519 private key (0600)
+│   │   ├── agent.key        # Ed25519 private key (0600)
+│   │   └── agent-id         # UUIDv5 derived from public key
 │   ├── objects/              # Content-addressable store
 │   └── refs/heads/           # Branch pointers
 ├── agent-card.json          # Working copy (changes with checkout)
@@ -129,12 +132,15 @@ your-project/
 ## Programmatic API
 
 ```typescript
-import { init, commit, checkout, branch, push, status } from '@newtype-ai/nit';
+import { init, commit, checkout, branch, push, status, sign, loginPayload } from '@newtype-ai/nit';
 
 await init();
-await branch('faam.io');
-await checkout('faam.io');
-// modify agent-card.json...
+
+// Log into an app (auto-creates and switches to domain branch)
+const payload = await loginPayload('faam.io');
+// → { agent_id, domain, timestamp, signature, switchedBranch, createdSkill }
+
+// Customize card, then commit & push
 await commit('FAAM config');
 await push({ all: true });
 ```
