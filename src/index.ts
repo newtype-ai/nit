@@ -41,6 +41,7 @@ import {
   loadAgentId,
   saveAgentId,
   signMessage,
+  loadRawKeyPair,
 } from './identity.js';
 import { discoverSkills, discoverSkillsDir, resolveSkillPointers, createSkillTemplate } from './skills.js';
 import { diffCards } from './diff.js';
@@ -76,6 +77,7 @@ export {
   parsePublicKeyField,
   deriveAgentId,
   loadAgentId,
+  loadRawKeyPair,
   NIT_NAMESPACE,
 } from './identity.js';
 export { fetchBranchCard } from './remote.js';

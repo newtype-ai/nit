@@ -118,6 +118,33 @@ export async function loadPrivateKey(nitDir: string): Promise<KeyObject> {
   });
 }
 
+/**
+ * Load the Ed25519 keypair as raw bytes (64-byte Uint8Array).
+ * Format: [32-byte seed || 32-byte public key]
+ * Compatible with Solana keypair format and other Ed25519 libraries.
+ */
+export async function loadRawKeyPair(nitDir: string): Promise<Uint8Array> {
+  const pubBase64 = await loadPublicKey(nitDir);
+  const keyPath = join(nitDir, 'identity', 'agent.key');
+
+  let privBase64: string;
+  try {
+    privBase64 = (await fs.readFile(keyPath, 'utf-8')).trim();
+  } catch {
+    throw new Error(
+      'Private key not found at .nit/identity/agent.key. Regenerate with `nit init`.',
+    );
+  }
+
+  const seed = Buffer.from(privBase64, 'base64');
+  const pubkey = Buffer.from(pubBase64, 'base64');
+
+  const keypair = new Uint8Array(64);
+  keypair.set(seed, 0);
+  keypair.set(pubkey, 32);
+  return keypair;
+}
+
 // ---------------------------------------------------------------------------
 // Public key formatting
 // ---------------------------------------------------------------------------
