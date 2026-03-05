@@ -132,7 +132,7 @@ your-project/
 ## Programmatic API
 
 ```typescript
-import { init, commit, checkout, branch, push, status, sign, loginPayload } from '@newtype-ai/nit';
+import { init, commit, checkout, branch, push, status, sign, loginPayload, loadRawKeyPair } from '@newtype-ai/nit';
 
 await init();
 
@@ -143,6 +143,10 @@ const payload = await loginPayload('faam.io');
 // Customize card, then commit & push
 await commit('FAAM config');
 await push({ all: true });
+
+// Access raw Ed25519 keypair (64 bytes: [seed || pubkey])
+const keypair = await loadRawKeyPair('/path/to/.nit');
+// → Uint8Array(64) — compatible with Solana and other Ed25519 libraries
 ```
 
 ## Design Principles
