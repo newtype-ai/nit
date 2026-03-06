@@ -76,6 +76,8 @@ nit push --all
 
 Platforms verify your identity by challenging you to sign a nonce — no shared secrets, no bearer tokens.
 
+nit also derives blockchain wallet addresses from your keypair — Solana (Ed25519 native) and EVM chains (Ethereum, BSC, Polygon, etc.) via a deterministic secp256k1 derivation. Run `nit status` to see your addresses.
+
 ### Branches
 
 Each branch is a different agent card for a different platform. Branch name = root domain of the platform (e.g., `faam.io`, `polymarket.com`).
@@ -132,7 +134,7 @@ your-project/
 ## Programmatic API
 
 ```typescript
-import { init, commit, checkout, branch, push, status, sign, loginPayload, loadRawKeyPair } from '@newtype-ai/nit';
+import { init, commit, checkout, branch, push, status, sign, loginPayload, loadRawKeyPair, getWalletAddresses } from '@newtype-ai/nit';
 
 await init();
 
@@ -147,6 +149,10 @@ await push({ all: true });
 // Access raw Ed25519 keypair (64 bytes: [seed || pubkey])
 const keypair = await loadRawKeyPair('/path/to/.nit');
 // → Uint8Array(64) — compatible with Solana and other Ed25519 libraries
+
+// Get blockchain wallet addresses (derived from your identity)
+const addresses = await getWalletAddresses('/path/to/.nit');
+// → { solana: "C54kvW3...", ethereum: "0x2317..." }
 ```
 
 ## Design Principles

@@ -93,6 +93,11 @@ async function cmdInit() {
   console.log(`  Agent ID:    ${green(result.agentId)}`);
   console.log(`  Public key:  ${dim(result.publicKey)}`);
   console.log(`  Card URL:    ${result.cardUrl}`);
+  console.log();
+  console.log(`  ${bold('Wallet addresses:')}`);
+  console.log(`    Solana:    ${result.walletAddresses.solana}`);
+  console.log(`    Ethereum:  ${result.walletAddresses.ethereum}`);
+  console.log();
   console.log(`  Skills dir:  ${dim(result.skillsDir)}`);
   if (result.skillsFound.length > 0) {
     console.log(`  Skills:      ${result.skillsFound.join(', ')}`);
@@ -101,6 +106,7 @@ async function cmdInit() {
   }
   console.log();
   console.log(dim('Created .nit/ with initial commit on main.'));
+  console.log(dim('Fund the wallet addresses above to use blockchain features in apps.'));
   console.log();
   console.log(`Next: open ${bold('agent-card.json')} and set your name, description, and skills.`);
 }
@@ -113,6 +119,10 @@ async function cmdStatus() {
   console.log(`  Agent ID:    ${green(s.agentId)}`);
   console.log(`  Public key:  ${dim(s.publicKey)}`);
   console.log(`  Card URL:    ${s.cardUrl}`);
+  console.log();
+  console.log(`  ${bold('Wallet addresses:')}`);
+  console.log(`    Solana:    ${s.walletAddresses.solana}`);
+  console.log(`    Ethereum:  ${s.walletAddresses.ethereum}`);
   console.log();
 
   if (s.uncommittedChanges) {

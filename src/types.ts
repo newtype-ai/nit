@@ -130,12 +130,19 @@ export interface PushResult {
   error?: string;
 }
 
+/** Wallet addresses derived from the agent's Ed25519 keypair. */
+export interface WalletAddresses {
+  solana: string;
+  ethereum: string;
+}
+
 /** Result returned by the status command. */
 export interface StatusResult {
   agentId: string;
   cardUrl: string;
   branch: string;
   publicKey: string;
+  walletAddresses: WalletAddresses;
   uncommittedChanges: DiffResult | null;
   branches: Array<{
     name: string;

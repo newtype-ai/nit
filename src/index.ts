@@ -14,6 +14,7 @@ import type {
   DiffResult,
   PushResult,
   StatusResult,
+  WalletAddresses,
 } from './types.js';
 import {
   hashObject,
@@ -44,6 +45,7 @@ import {
   loadRawKeyPair,
 } from './identity.js';
 import { discoverSkills, discoverSkillsDir, resolveSkillPointers, createSkillTemplate } from './skills.js';
+import { getWalletAddresses, getSolanaAddress, getEvmAddress, loadSecp256k1RawKeyPair } from './wallet.js';
 import { diffCards } from './diff.js';
 import {
   pushBranch as remotePushBranch,
@@ -66,6 +68,7 @@ export type {
   StatusResult,
   LoginPayload,
   SkillMetadata,
+  WalletAddresses,
 } from './types.js';
 
 // Re-export selected utilities
@@ -81,6 +84,13 @@ export {
   NIT_NAMESPACE,
 } from './identity.js';
 export { fetchBranchCard } from './remote.js';
+export {
+  getSolanaAddress,
+  getEvmAddress,
+  getWalletAddresses,
+  loadSecp256k1RawKeyPair,
+  base58Encode,
+} from './wallet.js';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -193,6 +203,7 @@ export interface InitResult {
   agentId: string;
   publicKey: string;
   cardUrl: string;
+  walletAddresses: WalletAddresses;
   skillsFound: string[];
   skillsDir: string;
 }
@@ -303,10 +314,14 @@ export async function init(options?: {
     skillsDir,
   });
 
+  // Derive wallet addresses
+  const walletAddresses = await getWalletAddresses(nitDir);
+
   return {
     agentId,
     publicKey: publicKeyField,
     cardUrl: card.url,
+    walletAddresses,
     skillsFound,
     skillsDir,
   };
@@ -383,11 +398,15 @@ export async function status(options?: {
     branchStatus.push({ name: b.name, ahead, behind: 0 });
   }
 
+  // Derive wallet addresses
+  const walletAddresses = await getWalletAddresses(nitDir);
+
   return {
     agentId,
     cardUrl,
     branch: currentBranch,
     publicKey,
+    walletAddresses,
     uncommittedChanges,
     branches: branchStatus,
   };

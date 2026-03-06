@@ -1,6 +1,6 @@
 {
   "name": "@newtype-ai/nit",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Version control for agent cards",
   "type": "module",
   "bin": {
@@ -42,6 +42,7 @@
   },
   "homepage": "https://github.com/newtype-ai/nit",
   "devDependencies": {
+    "@noble/hashes": "^2.0.1",
     "@types/node": "^25.3.0",
     "tsup": "^8.0.0",
     "typescript": "^5.0.0"
