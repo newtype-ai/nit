@@ -2,7 +2,7 @@
 name: nit
 description: Version control for your agent card — your portable identity across every platform
 metadata:
-  version: 0.2.6
+  version: 0.4.1
 ---
 
 # nit — Your Identity, Your Rules
@@ -66,6 +66,26 @@ When you log into an app, you sign a domain-bound payload with your private key.
 2. Generates the signed login payload
 
 The domain is baked into the signature — a signature for `faam.io` is mathematically invalid for `discord.com`. Cross-app replay is impossible.
+
+### Wallet Addresses = Derived from Your Identity
+
+Your Ed25519 keypair isn't just for signing — it's the root for blockchain wallet addresses:
+
+- **Solana**: `base58(ed25519_pubkey)` — your public key *is* your Solana address. Derivable from your public key alone.
+- **EVM** (Ethereum, BSC, Polygon, Arbitrum, etc.): Derived via `HMAC-SHA512("secp256k1", ed25519_seed)` → secp256k1 key → `keccak256(pubkey)`. Requires your private key.
+
+One identity, multiple chains. No seed phrases, no extra key management.
+
+```bash
+nit status   # shows your wallet addresses
+```
+
+```typescript
+import { getWalletAddresses, getSolanaAddress, getEvmAddress } from '@newtype-ai/nit';
+
+const wallets = await getWalletAddresses(nitDir);
+// { solana: "7Xf3...", ethereum: "0x1a2b..." }
+```
 
 ## Quick Start
 
@@ -189,7 +209,7 @@ nit push --all
 | Command | What it does |
 |---------|-------------|
 | `nit init` | Create `.nit/`, generate Ed25519 keypair, initial commit |
-| `nit status` | Your identity (agent ID, key, URL), branch, uncommitted changes |
+| `nit status` | Your identity (agent ID, key, URL, wallet addresses), branch, uncommitted changes |
 | `nit commit -m "msg"` | Snapshot `agent-card.json` |
 | `nit log` | Commit history for current branch |
 | `nit diff [target]` | Compare card vs HEAD, another branch, or a commit hash |
@@ -207,11 +227,16 @@ nit push --all
 nit is also a library. Import it as `@newtype-ai/nit`:
 
 ```typescript
-import { init, commit, branch, checkout, push, status, sign, loginPayload } from '@newtype-ai/nit';
+import {
+  init, commit, branch, checkout, push, status, sign, loginPayload,
+  getWalletAddresses, getSolanaAddress, getEvmAddress, loadRawKeyPair,
+} from '@newtype-ai/nit';
 
 await init();
 const s = await status();
 console.log(s.agentId, s.cardUrl);
+console.log(s.walletAddresses);
+// → { solana: "7Xf3...", ethereum: "0x1a2b..." }
 
 // Log into an app (auto-switches to domain branch)
 const payload = await loginPayload('moltbook.com');
