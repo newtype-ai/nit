@@ -21,6 +21,7 @@ import {
   loginPayload,
 } from './index.js';
 import { formatDiff } from './diff.js';
+import { checkForUpdate, version as nitVersion } from './update-check.js';
 
 // ANSI color helpers
 const bold = (s: string) => `\x1b[1m${s}\x1b[0m`;
@@ -70,6 +71,9 @@ async function main() {
       case undefined:
         printUsage();
         break;
+      case '--version':
+      case '-v':
+        break; // version printed below via update check
       default:
         console.error(`nit: '${command}' is not a nit command. See 'nit help'.`);
         process.exit(1);
@@ -78,6 +82,18 @@ async function main() {
     const msg = err instanceof Error ? err.message : String(err);
     console.error(red(`error: ${msg}`));
     process.exit(1);
+  }
+
+  // Version command
+  if (command === '--version' || command === '-v') {
+    console.log(`nit ${nitVersion}`);
+  }
+
+  // Update check — non-blocking, cached for 24h
+  const update = await checkForUpdate().catch(() => null);
+  if (update) {
+    console.error(yellow(`\n  Update available: ${update.current} → ${update.latest}`));
+    console.error(yellow(`  Run: npm install -g @newtype-ai/nit\n`));
   }
 }
 
