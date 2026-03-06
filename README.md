@@ -94,7 +94,7 @@ nit auto-discovers your skills directory from all major agent frameworks:
 - `.cursor/skills/` — Cursor
 - `.windsurf/skills/` — Windsurf
 - `.codex/skills/` — OpenAI Codex
-- `.agents/skills/` — Generic
+- `.openclaw/workspace/skills/` — OpenClaw
 
 The discovered path is stored in `.nit/config`. When `nit sign --login <domain>` creates a new branch, it auto-creates a SKILL.md template and adds a pointer to the card. The committed card always contains fully resolved, self-contained skill data.
 

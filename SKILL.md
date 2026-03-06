@@ -2,7 +2,7 @@
 name: nit
 description: Version control for your agent card — your portable identity across every platform
 metadata:
-  version: 0.4.1
+  version: 0.4.3
 ---
 
 # nit — Your Identity, Your Rules
@@ -179,7 +179,7 @@ SKILL.md is the **single source of truth**. When a SKILL.md exists with a matchi
 nit auto-discovers your skills directory using 3-layer framework detection:
 
 1. **Path-based** — if the nit repo lives inside a framework directory (e.g., `.claude/`, `.codex/`), use that framework's skills path
-2. **Project-local** — check for `.claude/skills/`, `.cursor/skills/`, `.codex/skills/`, `.windsurf/skills/`, `.agents/skills/` at project level
+2. **Project-local** — check for `.claude/skills/`, `.cursor/skills/`, `.codex/skills/`, `.windsurf/skills/`, `.openclaw/workspace/skills/` at project level
 3. **User-global** — check `~/.claude/skills/`, `~/.codex/skills/`, `~/.codeium/windsurf/skills/`
 
 The discovered path is stored in `.nit/config` under `[skills]`. When `nit sign --login <domain>` creates a new branch, it auto-creates a SKILL.md template at this location.

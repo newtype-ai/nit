@@ -36,7 +36,7 @@ const FRAMEWORK_MARKERS: Array<{ marker: string; skillsPath: string }> = [
   { marker: '.cursor', skillsPath: '.cursor/skills' },
   { marker: '.codex', skillsPath: '.codex/skills' },
   { marker: '.windsurf', skillsPath: '.windsurf/skills' },
-  { marker: '.openclaw', skillsPath: '.agents/skills' },
+  { marker: '.openclaw', skillsPath: '.openclaw/workspace/skills' },
 ];
 
 const GLOBAL_SKILLS_DIRS = [
