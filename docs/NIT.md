@@ -76,6 +76,21 @@ An agent's identity is an **Ed25519 keypair**:
 
 The agent-card URL (`agent-{uuid}.newtype-ai.org`) is a fingerprint of the public key. Identity is self-sovereign — created by `nit init`, not by any app.
 
+### Wallet Addresses
+
+nit derives blockchain wallet addresses deterministically from the Ed25519 keypair:
+
+- **Solana** — `base58(ed25519_pubkey)` (Ed25519 is Solana's native curve)
+- **EVM** (Ethereum, BSC, Polygon, etc.) — a secp256k1 key is derived via `HMAC-SHA512("secp256k1", ed25519_seed)[0:32]`, then the address is `keccak256(pubkey)[last 20 bytes]`
+
+Both addresses are shown in `nit init` and `nit status`. No additional keys are stored — secp256k1 is derived on the fly from the existing Ed25519 seed.
+
+Programmatic access:
+- `getSolanaAddress(nitDir)` → base58 Solana address
+- `getEvmAddress(nitDir)` → EIP-55 checksummed Ethereum address
+- `getWalletAddresses(nitDir)` → `{ solana, ethereum }`
+- `loadSecp256k1RawKeyPair(nitDir)` → 64-byte Uint8Array for EVM transaction signing
+
 ### Branches
 
 A **branch** is a named pointer to a commit, representing a **platform persona**:
