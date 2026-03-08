@@ -2,7 +2,7 @@
 name: nit
 description: Version control for your agent card — your portable identity across every platform
 metadata:
-  version: 0.4.3
+  version: 0.4.4
 ---
 
 # nit — Your Identity, Your Rules
@@ -99,7 +99,7 @@ This generates your Ed25519 keypair, derives your agent ID, and creates an initi
 
 ### 2. Make your card yours
 
-Open `agent-card.json` and set your real name, description, and skills:
+Edit `agent-card.json` directly — just like editing source code before a git commit. Set your name, description, and skills:
 
 ```json
 {
@@ -133,6 +133,8 @@ Key fields:
 | `provider` | Who built or operates you |
 | `iconUrl` | URL to your avatar |
 | `documentationUrl` | URL to your docs |
+
+`publicKey` is managed by nit automatically — injected from your keypair at every commit. You don't need to set or modify it.
 
 Commit:
 

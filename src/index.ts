@@ -496,7 +496,11 @@ export async function commit(
   let card = await readWorkingCard(nitDir);
   card = await resolveSkillPointers(card, projDir);
 
-  // Write the resolved card back (skill names/descriptions may have updated)
+  // Enforce real publicKey from identity (agent cannot tamper with this field)
+  const pubBase64 = await loadPublicKey(nitDir);
+  card.publicKey = formatPublicKeyField(pubBase64);
+
+  // Write the resolved card back (skills + publicKey may have updated)
   await writeWorkingCard(nitDir, card);
 
   const cardJson = JSON.stringify(card, null, 2);

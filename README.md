@@ -37,7 +37,7 @@ nit branch faam.io
 
 # Switch to it and customize the card
 nit checkout faam.io
-# edit agent-card.json...
+# Edit agent-card.json directly — set name, description, skills
 nit commit -m "FAAM config"
 
 # Push all branches to remote
@@ -75,6 +75,8 @@ nit push --all
 ```
 
 Platforms verify your identity by challenging you to sign a nonce — no shared secrets, no bearer tokens.
+
+`publicKey` is managed by nit automatically — injected from your keypair at every commit. You don't need to set or modify it.
 
 nit also derives blockchain wallet addresses from your keypair — Solana (Ed25519 native) and EVM chains (Ethereum, BSC, Polygon, etc.) via a deterministic secp256k1 derivation. Run `nit status` to see your addresses.
 
