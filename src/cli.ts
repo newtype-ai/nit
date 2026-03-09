@@ -21,7 +21,7 @@ import {
   loginPayload,
 } from './index.js';
 import { formatDiff } from './diff.js';
-import { checkForUpdate, version as nitVersion } from './update-check.js';
+import { autoUpdate, version as nitVersion } from './update-check.js';
 
 // ANSI color helpers
 const bold = (s: string) => `\x1b[1m${s}\x1b[0m`;
@@ -31,6 +31,9 @@ const red = (s: string) => `\x1b[31m${s}\x1b[0m`;
 const dim = (s: string) => `\x1b[2m${s}\x1b[0m`;
 
 async function main() {
+  // Auto-update before running any command (CLI only, never library)
+  await autoUpdate();
+
   const [, , command, ...args] = process.argv;
 
   try {
@@ -89,12 +92,6 @@ async function main() {
     console.log(`nit ${nitVersion}`);
   }
 
-  // Update check — non-blocking, cached for 24h
-  const update = await checkForUpdate().catch(() => null);
-  if (update) {
-    console.error(yellow(`\n  Update available: ${update.current} → ${update.latest}`));
-    console.error(yellow(`  Run: npm install -g @newtype-ai/nit\n`));
-  }
 }
 
 // ---------------------------------------------------------------------------

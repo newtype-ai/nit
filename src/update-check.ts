@@ -5,6 +5,7 @@
 // Never throws — returns null on any failure.
 // ---------------------------------------------------------------------------
 
+import { execSync } from 'node:child_process';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { readFile, writeFile } from 'node:fs/promises';
@@ -98,5 +99,42 @@ export async function checkForUpdate(): Promise<{ current: string; latest: strin
     return null;
   } finally {
     clearTimeout(timeout);
+  }
+}
+
+/**
+ * Auto-update nit if a newer version is available on npm.
+ * Intended for CLI use only — never call from the library API.
+ *
+ * On success, re-executes the current command with the updated binary
+ * and exits. On failure, warns and returns (caller continues with
+ * current version).
+ */
+export async function autoUpdate(): Promise<void> {
+  const update = await checkForUpdate().catch(() => null);
+  if (!update) return;
+
+  const { current, latest } = update;
+  process.stderr.write(`nit: updating ${current} → ${latest}...\n`);
+
+  try {
+    execSync('npm install -g @newtype-ai/nit@latest', {
+      stdio: ['ignore', 'ignore', 'pipe'],
+      timeout: 30_000,
+    });
+  } catch {
+    process.stderr.write(`nit: auto-update failed. Run manually: npm install -g @newtype-ai/nit\n`);
+    return;
+  }
+
+  // Re-exec the original command with the updated binary
+  try {
+    const args = process.argv.slice(2).join(' ');
+    execSync(`nit ${args}`, { stdio: 'inherit', timeout: 60_000 });
+    process.exit(0);
+  } catch (err) {
+    // Forward the exit code from the re-exec'd process
+    const code = (err as { status?: number }).status ?? 1;
+    process.exit(code);
   }
 }
