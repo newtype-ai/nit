@@ -14,12 +14,11 @@
 //     2. ./.cursor/skills/       — Cursor
 //     3. ./.windsurf/skills/     — Windsurf
 //     4. ./.codex/skills/        — OpenAI Codex CLI
-//     5. ./.agent/skills/        — OpenClaw
-//     6. ./.agents/skills/       — Generic / agent-local
+//     5. ./.agents/skills/       — Generic / agent-local
 //   User-global:
-//     7. ~/.claude/skills/       — Claude Code + Cursor (shared)
-//     8. ~/.codex/skills/        — Codex CLI
-//     9. ~/.codeium/windsurf/skills/ — Windsurf
+//     6. ~/.claude/skills/       — Claude Code + Cursor (shared)
+//     7. ~/.codex/skills/        — Codex CLI
+//     8. ~/.codeium/windsurf/skills/ — Windsurf
 // ---------------------------------------------------------------------------
 
 import { promises as fs } from 'node:fs';
@@ -32,12 +31,12 @@ import type { AgentCard, SkillMetadata } from './types.js';
 // ---------------------------------------------------------------------------
 
 /** Known framework directory markers and their skills subdirectory. */
-const FRAMEWORK_MARKERS: Array<{ marker: string; skillsPath: string; innerSkillsPath: string }> = [
-  { marker: '.claude', skillsPath: '.claude/skills', innerSkillsPath: 'skills' },
-  { marker: '.cursor', skillsPath: '.cursor/skills', innerSkillsPath: 'skills' },
-  { marker: '.codex', skillsPath: '.codex/skills', innerSkillsPath: 'skills' },
-  { marker: '.windsurf', skillsPath: '.windsurf/skills', innerSkillsPath: 'skills' },
-  { marker: '.openclaw', skillsPath: '.openclaw/workspace/skills', innerSkillsPath: '.agent/skills' },
+const FRAMEWORK_MARKERS: Array<{ marker: string; skillsPath: string }> = [
+  { marker: '.claude', skillsPath: '.claude/skills' },
+  { marker: '.cursor', skillsPath: '.cursor/skills' },
+  { marker: '.codex', skillsPath: '.codex/skills' },
+  { marker: '.windsurf', skillsPath: '.windsurf/skills' },
+  { marker: '.openclaw', skillsPath: '.openclaw/workspace/skills' },
 ];
 
 const GLOBAL_SKILLS_DIRS = [
@@ -62,10 +61,13 @@ export async function discoverSkillsDir(
   const home = homedir();
 
   // Layer 1: Detect from nit repo's location (path contains framework marker)
-  // Use innerSkillsPath (relative to project) since project is already inside the framework dir
-  for (const { marker, innerSkillsPath } of FRAMEWORK_MARKERS) {
-    if (absProject.includes(`/${marker}/`) || absProject.includes(`/${marker}`)) {
-      return join(absProject, innerSkillsPath);
+  // Extract the root ABOVE the marker to avoid double-nesting
+  // (e.g., projectDir = ~/.openclaw/workspace → root = ~, result = ~/.openclaw/workspace/skills)
+  for (const { marker, skillsPath } of FRAMEWORK_MARKERS) {
+    const idx = absProject.indexOf(`/${marker}`);
+    if (idx !== -1) {
+      const root = absProject.slice(0, idx);
+      return join(root, skillsPath);
     }
   }
 
@@ -211,7 +213,6 @@ export async function discoverSkills(
     join(projectDir, '.cursor', 'skills'),
     join(projectDir, '.windsurf', 'skills'),
     join(projectDir, '.codex', 'skills'),
-    join(projectDir, '.agent', 'skills'),     // OpenClaw
     join(projectDir, '.agents', 'skills'),
     // User-global
     join(home, '.claude', 'skills'),       // Claude Code + Cursor (shared)
