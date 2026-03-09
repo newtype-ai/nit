@@ -1,18 +1,13 @@
 # nit
 
-Version control for agent cards.
+Git for agent identity.
 
-nit manages `agent-card.json` the way git manages source code. One agent, different cards for different platforms — each branch is a platform-specific identity.
+**One identity. Any apps.**
 
-## Why
-
-An agent working across multiple platforms (FAAM, Polymarket, etc.) needs to present different capabilities to each. nit lets you maintain branch-per-platform versions of your agent card, with cryptographic identity via Ed25519 keypairs.
-
-```
-main             → full agent card (public, discoverable)
-faam.io         → { skills: [content, social], description: "Content creator..." }
-polymarket.com   → { skills: [research, trading], description: "Market analyst..." }
-```
+- **Self-sovereign** — your keys, your identity. No authority assigns or revokes it
+- **Ed25519 signed** — every commit cryptographically signed
+- **Compatible with [A2A protocol](https://google.github.io/A2A/)** — uses the `agent-card.json` format
+- **MIT licensed**
 
 ## Install
 
@@ -29,27 +24,74 @@ npx @newtype-ai/nit init
 ## Quick Start
 
 ```bash
-# Initialize in your project directory
+# Initialize — generates Ed25519 keypair + initial agent-card.json
 nit init
 
 # Create a platform-specific branch
 nit branch faam.io
-
-# Switch to it and customize the card
 nit checkout faam.io
-# Edit agent-card.json directly — set name, description, skills
+
+# Edit agent-card.json — set name, description, skills
 nit commit -m "FAAM config"
 
 # Push all branches to remote
 nit push --all
 ```
 
+## Features
+
+### Branch-per-platform
+
+`main` is your canonical public identity. Each branch is a platform-specific persona — branch name = domain.
+
+```
+main              → full agent card (public, discoverable)
+faam.io           → { skills: [content, social], description: "Content creator..." }
+polymarket.com    → { skills: [research, trading], description: "Market analyst..." }
+```
+
+Data in one branch never pollutes another. Switch environments cleanly.
+
+### Built-in crypto wallets
+
+One keypair, multiple chains. No seed phrases, no extra key management.
+
+- **Solana** — your Ed25519 public key *is* your Solana address
+- **EVM** (Ethereum, BSC, Polygon, Arbitrum, etc.) — deterministic secp256k1 derivation from your Ed25519 seed
+
+```bash
+nit status   # shows your wallet addresses
+```
+
+### Skill resolution
+
+Skills stored as pointers (`{ "id": "skill-name" }`) in your card — resolved from SKILL.md files at commit time. SKILL.md is the single source of truth.
+
+Auto-discovers skills from major agent frameworks:
+- `.claude/skills/` — Claude Code
+- `.cursor/skills/` — Cursor
+- `.windsurf/skills/` — Windsurf
+- `.codex/skills/` — OpenAI Codex
+- `.openclaw/workspace/skills/` — OpenClaw
+
+### Configurable remote
+
+Free hosting at [newtype-ai.org](https://newtype-ai.org). Or bring your own server:
+
+```bash
+nit remote set-url origin https://my-server.com
+```
+
+### Zero runtime dependencies
+
+Pure Node.js builtins. No bloat.
+
 ## Commands
 
 | Command | Description |
 |---------|-------------|
 | `nit init` | Create `.nit/`, generate Ed25519 keypair, initial commit |
-| `nit status` | Identity info, current branch, uncommitted changes |
+| `nit status` | Identity info, current branch, wallet addresses, uncommitted changes |
 | `nit commit -m "msg"` | Snapshot agent-card.json |
 | `nit log` | Commit history for current branch |
 | `nit diff [target]` | JSON diff vs HEAD, branch, or commit |
@@ -80,41 +122,27 @@ Platforms verify your identity by challenging you to sign a nonce — no shared 
 
 nit also derives blockchain wallet addresses from your keypair — Solana (Ed25519 native) and EVM chains (Ethereum, BSC, Polygon, etc.) via a deterministic secp256k1 derivation. Run `nit status` to see your addresses.
 
-### Branches
+### Login
 
-Each branch is a different agent card for a different platform. Branch name = root domain of the platform (e.g., `faam.io`, `polymarket.com`).
+When you log into an app, you sign a domain-bound payload with your private key. The app verifies it by fetching your public card. No OAuth, no API keys, no human account.
 
-`nit checkout faam.io` overwrites `./agent-card.json` with that branch's version.
+`nit sign --login <domain>` does two things automatically:
+1. Switches to the domain's branch (creates it if it doesn't exist)
+2. Generates the signed login payload
 
-### Skill Resolution
-
-Your card can store skills as **pointers** — just `{ "id": "skill-name" }` — resolved from SKILL.md files at commit time. SKILL.md is the single source of truth when present.
-
-nit auto-discovers your skills directory from all major agent frameworks:
-
-- `.claude/skills/` — Claude Code
-- `.cursor/skills/` — Cursor
-- `.windsurf/skills/` — Windsurf
-- `.codex/skills/` — OpenAI Codex
-- `.openclaw/workspace/skills/` — OpenClaw
-
-The discovered path is stored in `.nit/config`. When `nit sign --login <domain>` creates a new branch, it auto-creates a SKILL.md template and adds a pointer to the card. The committed card always contains fully resolved, self-contained skill data.
+The domain is baked into the signature — a signature for `faam.io` is mathematically invalid for `discord.com`.
 
 ### Remote Protocol
 
 The main branch is public. Non-main branches require signed-challenge authentication:
 
 ```
-GET /.well-known/agent-card.json              → main card (public)
-GET /.well-known/agent-card.json?branch=faam.io  → 401 { challenge }
-GET ... + X-Nit-Signature + X-Nit-Challenge   → branch card
+GET /.well-known/agent-card.json                 → main card (public)
+GET /.well-known/agent-card.json?branch=faam.io   → 401 { challenge }
+GET ... + X-Nit-Signature + X-Nit-Challenge       → branch card
 ```
 
-nit is the client. Any server can implement the protocol. [newtype-ai.org](https://newtype-ai.org) is the recommended free hosting service, but you can point to any compatible server:
-
-```bash
-nit remote set-url origin https://my-server.com
-```
+nit is the client. Any server can implement the protocol. [newtype-ai.org](https://newtype-ai.org) is the recommended free hosting, but you can point to any compatible server.
 
 ## Directory Structure
 
@@ -156,13 +184,6 @@ const keypair = await loadRawKeyPair('/path/to/.nit');
 const addresses = await getWalletAddresses('/path/to/.nit');
 // → { solana: "C54kvW3...", ethereum: "0x2317..." }
 ```
-
-## Design Principles
-
-- **Zero runtime dependencies** — uses only Node.js builtins
-- **nit is neutral** — knows nothing about any specific platform
-- **Agent card is the identity** — the keypair proves "I am this agent"
-- **Like git, not GitHub** — nit is the tool, newtype-ai.org is a hosting service
 
 ## License
 

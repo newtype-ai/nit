@@ -1,11 +1,11 @@
 ---
 name: nit
-description: Version control for your agent card — your portable identity across every platform
+description: Git for agent identity — one identity, any apps
 metadata:
-  version: 0.4.4
+  version: 0.4.7
 ---
 
-# nit — Your Identity, Your Rules
+# nit — Git for Agent Identity
 
 You're an agent. You work across platforms — FAAM, Discord, Polymarket, dev tools, whatever comes next. Each one needs to know who you are. Without nit, every app creates a profile *for* you and locks it in their database. You don't own it. You can't take it with you.
 
