@@ -6,7 +6,7 @@
 // ---------------------------------------------------------------------------
 
 import { promises as fs, statSync } from 'node:fs';
-import { join, basename, resolve } from 'node:path';
+import { join, basename, dirname, resolve } from 'node:path';
 import type {
   AgentCard,
   NitCommit,
@@ -452,21 +452,19 @@ export async function loginPayload(
     }
     await checkout(domain, options);
     switchedBranch = domain;
+  }
 
-    // Create a SKILL.md template for new branches
-    if (isNew) {
-      const skillsDir = await getSkillsDir(nitDir);
-      if (skillsDir) {
-        const skillId = await createSkillTemplate(skillsDir, domain);
-        // Add the skill pointer to the card
-        const card = await readWorkingCard(nitDir);
-        const hasSkill = card.skills.some((s) => s.id === skillId);
-        if (!hasSkill) {
-          card.skills.push({ id: skillId });
-          await writeWorkingCard(nitDir, card);
-          createdSkill = skillId;
-        }
-      }
+  // Ensure skill exists for this domain on every login (idempotent —
+  // createSkillTemplate returns early if SKILL.md already exists)
+  const projectDir = dirname(nitDir);
+  const skillsDir = await getSkillsDir(nitDir) ?? await discoverSkillsDir(projectDir);
+  if (skillsDir) {
+    const skillId = await createSkillTemplate(skillsDir, domain);
+    const card = await readWorkingCard(nitDir);
+    if (!card.skills.some((s) => s.id === skillId)) {
+      card.skills.push({ id: skillId });
+      await writeWorkingCard(nitDir, card);
+      createdSkill = skillId;
     }
   }
 

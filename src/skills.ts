@@ -96,7 +96,12 @@ export async function discoverSkillsDir(
 }
 
 /**
- * Create a template SKILL.md for a new branch/environment.
+ * Ensure a SKILL.md exists for a domain, fetching from the server if possible.
+ *
+ * - If no local SKILL.md → fetch from `https://{domain}/skill.md`, fallback to template
+ * - If local exists → fetch remote, compare `version` field, update if remote is newer
+ * - If fetch fails (offline, no skill.md served) → keep local or create template
+ *
  * Returns the skill ID (sanitized directory name).
  */
 export async function createSkillTemplate(
@@ -107,16 +112,78 @@ export async function createSkillTemplate(
   const skillDir = join(skillsDir, skillId);
   const skillPath = join(skillDir, 'SKILL.md');
 
-  // Don't overwrite existing skill
+  // Read local version if it exists
+  let localVersion: string | undefined;
   try {
-    await fs.access(skillPath);
-    return skillId; // Already exists
+    const existing = await fs.readFile(skillPath, 'utf-8');
+    localVersion = parseVersion(existing);
   } catch {
-    // Doesn't exist — create it
+    // Doesn't exist yet
+  }
+
+  // Fetch remote skill from the domain
+  let remoteContent: string | null = null;
+  let remoteVersion: string | undefined;
+  try {
+    const res = await fetch(`https://${domain}/skill.md`, {
+      headers: { 'Accept': 'text/markdown, text/plain' },
+      signal: AbortSignal.timeout(5000),
+    });
+    if (res.ok) {
+      const text = await res.text();
+      if (text.startsWith('---')) {
+        remoteContent = text;
+        remoteVersion = parseVersion(text);
+      }
+    }
+  } catch {
+    // Network error — fall through
+  }
+
+  // If local exists, only overwrite when remote has a newer version
+  if (localVersion !== undefined) {
+    if (!remoteVersion || !isNewerVersion(remoteVersion, localVersion)) {
+      return skillId; // Local is current (or remote unavailable)
+    }
   }
 
   await fs.mkdir(skillDir, { recursive: true });
-  const template = `---
+  await fs.writeFile(
+    skillPath,
+    remoteContent ?? fallbackTemplate(skillId, domain),
+    'utf-8',
+  );
+  return skillId;
+}
+
+// ---------------------------------------------------------------------------
+// Version helpers
+// ---------------------------------------------------------------------------
+
+/** Extract the `version` field from YAML frontmatter, or undefined. */
+function parseVersion(content: string): string | undefined {
+  const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+  if (!fmMatch) return undefined;
+  const versionMatch = fmMatch[1].match(/^version:\s*(.+)$/m);
+  return versionMatch ? versionMatch[1].trim() : undefined;
+}
+
+/** True if `remote` is a strictly newer semver than `local`. */
+function isNewerVersion(remote: string, local: string): boolean {
+  const r = remote.split('.').map(Number);
+  const l = local.split('.').map(Number);
+  const len = Math.max(r.length, l.length);
+  for (let i = 0; i < len; i++) {
+    const rv = r[i] ?? 0;
+    const lv = l[i] ?? 0;
+    if (rv > lv) return true;
+    if (rv < lv) return false;
+  }
+  return false; // Equal
+}
+
+function fallbackTemplate(skillId: string, domain: string): string {
+  return `---
 name: ${skillId}
 description: Skills and context for ${domain}
 ---
@@ -125,8 +192,6 @@ description: Skills and context for ${domain}
 
 Configure your skills and context for ${domain} here.
 `;
-  await fs.writeFile(skillPath, template, 'utf-8');
-  return skillId;
 }
 
 /**
