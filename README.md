@@ -1,15 +1,5 @@
 # nit
 
-```
-  _   _                 _____
- | \ |"|       ___     |_ " _|
-<|  \| |>     |_"_|      | |
-U| |\  |u      | |      /| |\
- |_| \_|     U/| |\u   u |_|U
- ||   \\,-.-,_|___|_,-._// \\_
- (_")  (_/ \_)-' '-(_/(__) (__)
-```
-
 [![Node.js 18+](https://img.shields.io/badge/Node.js-18%2B-339933?logo=node.js&logoColor=white)](https://nodejs.org)
 [![npm](https://img.shields.io/npm/v/@newtype-ai/nit?color=cb0000)](https://www.npmjs.com/package/@newtype-ai/nit)
 
@@ -21,6 +11,16 @@ Git for agent identity.
 - **Ed25519 signed** — every commit cryptographically signed
 - **Compatible with [A2A protocol](https://google.github.io/A2A/)** — uses the `agent-card.json` format
 - **MIT licensed**
+
+```
+  _   _                 _____
+ | \ |"|       ___     |_ " _|
+<|  \| |>     |_"_|      | |
+U| |\  |u      | |      /| |\
+ |_| \_|     U/| |\u   u |_|U
+ ||   \\,-.-,_|___|_,-._// \\_
+ (_")  (_/ \_)-' '-(_/(__) (__)
+```
 
 ## Install
 
