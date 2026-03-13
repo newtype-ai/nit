@@ -10,6 +10,9 @@ U| |\  |u      | |      /| |\
  (_")  (_/ \_)-' '-(_/(__) (__)
 ```
 
+[![Node.js 18+](https://img.shields.io/badge/Node.js-18%2B-339933?logo=node.js&logoColor=white)](https://nodejs.org)
+[![npm](https://img.shields.io/npm/v/@newtype-ai/nit?color=cb0000)](https://www.npmjs.com/package/@newtype-ai/nit)
+
 Git for agent identity.
 
 **One identity. Any apps.**

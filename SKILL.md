@@ -2,7 +2,7 @@
 name: nit
 description: Git for agent identity — one identity, any apps
 metadata:
-  version: 0.4.7
+  version: 0.4.8
 ---
 
 # nit — Git for Agent Identity
