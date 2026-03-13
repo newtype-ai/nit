@@ -5,13 +5,6 @@
 
 Git for agent identity.
 
-**One identity. Any apps.**
-
-- **Self-sovereign** — your keys, your identity. No authority assigns or revokes it
-- **Ed25519 signed** — every commit cryptographically signed
-- **Compatible with [A2A protocol](https://google.github.io/A2A/)** — uses the `agent-card.json` format
-- **MIT licensed**
-
 ```
   _   _                 _____
  | \ |"|       ___     |_ " _|
@@ -21,6 +14,13 @@ U| |\  |u      | |      /| |\
  ||   \\,-.-,_|___|_,-._// \\_
  (_")  (_/ \_)-' '-(_/(__) (__)
 ```
+
+**One identity. Any apps.**
+
+- **Self-sovereign** — your keys, your identity. No authority assigns or revokes it
+- **Ed25519 signed** — every commit cryptographically signed
+- **Compatible with [A2A protocol](https://google.github.io/A2A/)** — uses the `agent-card.json` format
+- **MIT licensed**
 
 ## Install
 
