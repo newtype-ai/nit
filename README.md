@@ -123,6 +123,8 @@ Pure Node.js builtins. No bloat.
 | `nit broadcast --chain <c> <tx>` | Broadcast signed transaction to configured RPC endpoint |
 | `nit rpc` | Show configured RPC endpoints |
 | `nit rpc set-url <chain> <url>` | Set RPC endpoint for a chain |
+| `nit auth set <domain> --provider <p> --account <a>` | Configure OAuth auth for a domain branch |
+| `nit auth show [domain]` | Show auth config for branch(es) |
 
 ## How It Works
 
@@ -186,7 +188,7 @@ your-project/
 ```typescript
 import {
   init, commit, checkout, branch, push, status, sign, loginPayload,
-  loadRawKeyPair, getWalletAddresses, signTx, broadcast, rpcSetUrl,
+  loadRawKeyPair, getWalletAddresses, signTx, broadcast, rpcSetUrl, authSet, authShow,
 } from '@newtype-ai/nit';
 
 await init();

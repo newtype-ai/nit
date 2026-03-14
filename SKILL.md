@@ -241,6 +241,8 @@ nit push --all
 | `nit broadcast --chain <c> <tx>` | Broadcast signed transaction to configured RPC endpoint |
 | `nit rpc` | Show configured RPC endpoints |
 | `nit rpc set-url <chain> <url>` | Set RPC endpoint for a chain |
+| `nit auth set <domain> --provider <p> --account <a>` | Configure OAuth auth for a domain branch (Google, GitHub, X) |
+| `nit auth show [domain]` | Show auth config for branch(es) |
 
 ## Programmatic API
 
@@ -250,7 +252,7 @@ nit is also a library. Import it as `@newtype-ai/nit`:
 import {
   init, commit, branch, checkout, push, status, sign, loginPayload,
   getWalletAddresses, getSolanaAddress, getEvmAddress, loadRawKeyPair,
-  signTx, broadcast, rpcSetUrl, rpcInfo,
+  signTx, broadcast, rpcSetUrl, rpcInfo, authSet, authShow,
 } from '@newtype-ai/nit';
 
 await init();

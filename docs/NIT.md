@@ -343,6 +343,8 @@ All commands run in a directory containing `agent-card.json` and `.nit/`.
 | `nit broadcast --chain <c> <tx>` | Broadcast signed transaction to configured RPC endpoint |
 | `nit rpc` | Show configured RPC endpoints |
 | `nit rpc set-url <chain> <url>` | Set RPC endpoint for a chain (stored in `.nit/config` under `[rpc "chain"]`) |
+| `nit auth set <domain> --provider <p> --account <a>` | Configure OAuth consent instructions for a domain branch. Generates SKILL.md with two-stage auth flow (session reuse + OAuth consent). Providers: `google`, `github`, `x` |
+| `nit auth show [domain]` | Show OAuth auth config for a specific branch, or all branches with auth configured |
 
 ---
 
