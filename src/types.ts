@@ -50,12 +50,20 @@ export interface NitRemoteConfig {
   credential?: string;
 }
 
+/** RPC endpoint configuration for a specific chain. */
+export interface NitRpcConfig {
+  /** JSON-RPC endpoint URL */
+  url: string;
+}
+
 /** Full .nit/config file contents. */
 export interface NitConfig {
   /** Keyed by remote name (e.g. "origin") */
   remotes: Record<string, NitRemoteConfig>;
   /** Discovered skills directory path */
   skillsDir?: string;
+  /** RPC endpoints keyed by chain name (e.g. "evm", "solana") */
+  rpc?: Record<string, NitRpcConfig>;
 }
 
 /** A2A-compatible agent card. */
@@ -149,6 +157,28 @@ export interface StatusResult {
     ahead: number;
     behind: number;
   }>;
+}
+
+/** Result of signing transaction data. */
+export interface SignTxResult {
+  /** Chain that was signed for */
+  chain: 'evm' | 'solana';
+  /** The signature (EVM: "0x{r}{s}{v}" 130 hex chars, Solana: base64 64-byte Ed25519) */
+  signature: string;
+  /** EVM only: recovery parameter (0 or 1) for agent to compute chain-specific v */
+  recovery?: number;
+  /** The signer address */
+  address: string;
+}
+
+/** Result of broadcasting a signed transaction. */
+export interface BroadcastResult {
+  /** Chain that was broadcast to */
+  chain: 'evm' | 'solana';
+  /** Transaction hash (EVM) or signature (Solana) */
+  txHash: string;
+  /** RPC endpoint used */
+  rpcUrl: string;
 }
 
 /** Result of generating a login payload for app authentication. */

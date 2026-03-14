@@ -11,10 +11,13 @@ import type {
   AgentCard,
   NitCommit,
   NitBranch,
+  NitRpcConfig,
   DiffResult,
   PushResult,
   StatusResult,
   WalletAddresses,
+  SignTxResult,
+  BroadcastResult,
 } from './types.js';
 import {
   hashObject,
@@ -51,7 +54,8 @@ import {
   pushBranch as remotePushBranch,
   pushAll as remotePushAll,
 } from './remote.js';
-import { readConfig, writeConfig, getRemoteUrl, getSkillsDir } from './config.js';
+import { readConfig, writeConfig, getRemoteUrl, getSkillsDir, setRpcUrl as configSetRpcUrl } from './config.js';
+import { signTx as txSignTx, broadcast as txBroadcast } from './tx.js';
 
 // Re-export types for consumers
 export type {
@@ -62,7 +66,10 @@ export type {
   NitHead,
   NitConfig,
   NitRemoteConfig,
+  NitRpcConfig,
   DiffResult,
+  SignTxResult,
+  BroadcastResult,
   FieldDiff,
   PushResult,
   StatusResult,
@@ -90,6 +97,8 @@ export {
   getWalletAddresses,
   loadSecp256k1RawKeyPair,
   base58Encode,
+  signEvmHash,
+  signSolanaBytes,
 } from './wallet.js';
 
 // ---------------------------------------------------------------------------
@@ -807,5 +816,59 @@ export async function remoteSetUrl(
   }
   config.remotes[name].url = url;
   await writeConfig(nitDir, config);
+}
+
+// ---------------------------------------------------------------------------
+// sign-tx / broadcast / rpc
+// ---------------------------------------------------------------------------
+
+/**
+ * Sign transaction data with the agent's identity-derived key.
+ *
+ * EVM: pass a 32-byte keccak256 hash (hex). Returns ECDSA signature.
+ * Solana: pass serialized message bytes (hex). Returns Ed25519 signature.
+ */
+export async function signTx(
+  chain: 'evm' | 'solana',
+  data: string,
+  options?: { projectDir?: string },
+): Promise<SignTxResult> {
+  const nitDir = findNitDir(options?.projectDir);
+  return txSignTx(nitDir, chain, data);
+}
+
+/**
+ * Broadcast a signed transaction to the configured RPC endpoint.
+ */
+export async function broadcast(
+  chain: 'evm' | 'solana',
+  signedTx: string,
+  options?: { projectDir?: string; rpcUrl?: string },
+): Promise<BroadcastResult> {
+  const nitDir = findNitDir(options?.projectDir);
+  return txBroadcast(nitDir, chain, signedTx, options?.rpcUrl);
+}
+
+/**
+ * Set the RPC endpoint URL for a chain.
+ */
+export async function rpcSetUrl(
+  chain: string,
+  url: string,
+  options?: { projectDir?: string },
+): Promise<void> {
+  const nitDir = findNitDir(options?.projectDir);
+  await configSetRpcUrl(nitDir, chain, url);
+}
+
+/**
+ * Get all configured RPC endpoints.
+ */
+export async function rpcInfo(
+  options?: { projectDir?: string },
+): Promise<Record<string, NitRpcConfig>> {
+  const nitDir = findNitDir(options?.projectDir);
+  const config = await readConfig(nitDir);
+  return config.rpc ?? {};
 }
 

@@ -19,6 +19,10 @@ import {
   remoteSetUrl,
   sign,
   loginPayload,
+  signTx,
+  broadcast,
+  rpcSetUrl,
+  rpcInfo,
 } from './index.js';
 import { formatDiff } from './diff.js';
 import { autoUpdate, version as nitVersion } from './update-check.js';
@@ -67,6 +71,15 @@ async function main() {
         break;
       case 'remote':
         await cmdRemote(args);
+        break;
+      case 'sign-tx':
+        await cmdSignTx(args);
+        break;
+      case 'broadcast':
+        await cmdBroadcast(args);
+        break;
+      case 'rpc':
+        await cmdRpc(args);
         break;
       case 'help':
       case '--help':
@@ -319,6 +332,86 @@ async function cmdSign(args: string[]) {
   console.log(signature);
 }
 
+async function cmdSignTx(args: string[]) {
+  const chainIndex = args.indexOf('--chain');
+  if (chainIndex === -1 || !args[chainIndex + 1]) {
+    console.error('Usage: nit sign-tx --chain <evm|solana> <hex-data>');
+    process.exit(1);
+  }
+  const chain = args[chainIndex + 1] as 'evm' | 'solana';
+  if (chain !== 'evm' && chain !== 'solana') {
+    console.error(`Unknown chain: ${chain}. Use 'evm' or 'solana'.`);
+    process.exit(1);
+  }
+
+  // Data is the remaining arg (not --chain or its value)
+  const data = args.filter((_, i) => i !== chainIndex && i !== chainIndex + 1)[0];
+  if (!data) {
+    console.error('Usage: nit sign-tx --chain <evm|solana> <hex-data>');
+    process.exit(1);
+  }
+
+  const result = await signTx(chain, data);
+  console.log(JSON.stringify(result, null, 2));
+}
+
+async function cmdBroadcast(args: string[]) {
+  const chainIndex = args.indexOf('--chain');
+  if (chainIndex === -1 || !args[chainIndex + 1]) {
+    console.error('Usage: nit broadcast --chain <evm|solana> <signed-tx>');
+    process.exit(1);
+  }
+  const chain = args[chainIndex + 1] as 'evm' | 'solana';
+  if (chain !== 'evm' && chain !== 'solana') {
+    console.error(`Unknown chain: ${chain}. Use 'evm' or 'solana'.`);
+    process.exit(1);
+  }
+
+  const signedTx = args.filter((_, i) => i !== chainIndex && i !== chainIndex + 1)[0];
+  if (!signedTx) {
+    console.error('Usage: nit broadcast --chain <evm|solana> <signed-tx>');
+    process.exit(1);
+  }
+
+  const result = await broadcast(chain, signedTx);
+  console.log(`${green('+')} ${result.txHash}`);
+  console.log(dim(`  → ${result.rpcUrl}`));
+}
+
+async function cmdRpc(args: string[]) {
+  if (args[0] === 'set-url') {
+    const chain = args[1];
+    const url = args[2];
+    if (!chain || !url) {
+      console.error('Usage: nit rpc set-url <chain> <url>');
+      process.exit(1);
+    }
+    await rpcSetUrl(chain, url);
+    console.log(`Set RPC URL for '${chain}' to ${url}`);
+    return;
+  }
+
+  if (args[0]) {
+    console.error(`nit rpc: unknown subcommand '${args[0]}'`);
+    console.error('Usage: nit rpc [set-url <chain> <url>]');
+    process.exit(1);
+  }
+
+  // Default: show RPC endpoints
+  const info = await rpcInfo();
+  const chains = Object.keys(info);
+
+  if (chains.length === 0) {
+    console.log(dim('No RPC endpoints configured.'));
+    console.log(dim('Run: nit rpc set-url <chain> <url>'));
+    return;
+  }
+
+  for (const [chain, config] of Object.entries(info)) {
+    console.log(`  ${bold(chain)}: ${config.url}`);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Help
 // ---------------------------------------------------------------------------
@@ -343,6 +436,10 @@ ${bold('Commands:')}
   remote             Show remote info
   remote add <n> <u> Add a new remote
   remote set-url <n> <u>  Change remote URL
+  sign-tx --chain <c> <data>  Sign tx data (evm: hash, solana: message)
+  broadcast --chain <c> <tx>  Send signed tx to RPC endpoint
+  rpc                Show configured RPC endpoints
+  rpc set-url <c> <url>  Set RPC endpoint for a chain
 
 ${bold('Examples:')}
   nit init

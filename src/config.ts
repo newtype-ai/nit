@@ -13,7 +13,7 @@
 
 import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
-import type { NitConfig, NitRemoteConfig } from './types.js';
+import type { NitConfig, NitRemoteConfig, NitRpcConfig } from './types.js';
 
 const CONFIG_FILE = 'config';
 
@@ -125,14 +125,45 @@ export async function setSkillsDir(
   await writeConfig(nitDir, config);
 }
 
+/**
+ * Get the RPC URL for a chain, or null if not set.
+ */
+export async function getRpcUrl(
+  nitDir: string,
+  chain: string,
+): Promise<string | null> {
+  const config = await readConfig(nitDir);
+  return config.rpc?.[chain]?.url ?? null;
+}
+
+/**
+ * Set (or update) the RPC URL for a chain.
+ */
+export async function setRpcUrl(
+  nitDir: string,
+  chain: string,
+  url: string,
+): Promise<void> {
+  const config = await readConfig(nitDir);
+
+  if (!config.rpc) {
+    config.rpc = {};
+  }
+  config.rpc[chain] = { url };
+
+  await writeConfig(nitDir, config);
+}
+
 // ---------------------------------------------------------------------------
 // INI parser / serializer
 // ---------------------------------------------------------------------------
 
 function parseConfig(raw: string): NitConfig {
   const remotes: Record<string, NitRemoteConfig> = {};
+  const rpc: Record<string, NitRpcConfig> = {};
   let currentSection: string | null = null;
   let currentRemote: string | null = null;
+  let currentRpcChain: string | null = null;
   let skillsDir: string | undefined;
 
   for (const line of raw.split('\n')) {
@@ -146,9 +177,19 @@ function parseConfig(raw: string): NitConfig {
     if (remoteMatch) {
       currentSection = 'remote';
       currentRemote = remoteMatch[1];
+      currentRpcChain = null;
       if (!remotes[currentRemote]) {
         remotes[currentRemote] = {};
       }
+      continue;
+    }
+
+    // Section header: [rpc "chain"]
+    const rpcMatch = trimmed.match(/^\[rpc\s+"([^"]+)"\]$/);
+    if (rpcMatch) {
+      currentSection = 'rpc';
+      currentRpcChain = rpcMatch[1];
+      currentRemote = null;
       continue;
     }
 
@@ -156,6 +197,7 @@ function parseConfig(raw: string): NitConfig {
     if (trimmed === '[skills]') {
       currentSection = 'skills';
       currentRemote = null;
+      currentRpcChain = null;
       continue;
     }
 
@@ -169,6 +211,10 @@ function parseConfig(raw: string): NitConfig {
         } else if (key === 'credential') {
           remotes[currentRemote].credential = value.trim();
         }
+      } else if (currentSection === 'rpc' && currentRpcChain !== null) {
+        if (key === 'url') {
+          rpc[currentRpcChain] = { url: value.trim() };
+        }
       } else if (currentSection === 'skills') {
         if (key === 'dir') {
           skillsDir = value.trim();
@@ -177,7 +223,11 @@ function parseConfig(raw: string): NitConfig {
     }
   }
 
-  return { remotes, skillsDir };
+  const config: NitConfig = { remotes, skillsDir };
+  if (Object.keys(rpc).length > 0) {
+    config.rpc = rpc;
+  }
+  return config;
 }
 
 function serializeConfig(config: NitConfig): string {
@@ -192,6 +242,14 @@ function serializeConfig(config: NitConfig): string {
       lines.push(`  credential = ${remote.credential}`);
     }
     lines.push('');
+  }
+
+  if (config.rpc) {
+    for (const [chain, rpcConfig] of Object.entries(config.rpc)) {
+      lines.push(`[rpc "${chain}"]`);
+      lines.push(`  url = ${rpcConfig.url}`);
+      lines.push('');
+    }
   }
 
   if (config.skillsDir) {

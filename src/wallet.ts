@@ -14,11 +14,12 @@
 //   No master seed needed — the Ed25519 seed is the root of trust.
 // ---------------------------------------------------------------------------
 
-import { createHmac, createECDH } from 'node:crypto';
+import { createHmac, createECDH, sign as cryptoSign } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
 import { keccak_256 } from '@noble/hashes/sha3.js';
-import { loadPublicKey } from './identity.js';
+import { secp256k1 } from '@noble/curves/secp256k1.js';
+import { loadPublicKey, loadPrivateKey } from './identity.js';
 
 // ---------------------------------------------------------------------------
 // Base58 encoding (Bitcoin/Solana alphabet)
@@ -176,4 +177,56 @@ export async function loadSecp256k1RawKeyPair(
   keypair.set(secp256k1PrivKey, 0);
   keypair.set(secp256k1PubKey.subarray(1, 33), 32); // X coordinate only
   return keypair;
+}
+
+// ---------------------------------------------------------------------------
+// Transaction signing
+// ---------------------------------------------------------------------------
+
+/**
+ * Sign a 32-byte hash with the agent's derived secp256k1 private key.
+ * Returns ECDSA signature with recovery parameter.
+ *
+ * The caller (agent) provides a pre-hashed message (e.g. keccak256 of
+ * an RLP-encoded EVM transaction). nit signs it and returns (r, s, recovery).
+ * The agent computes chain-specific v = chainId * 2 + 35 + recovery (EIP-155).
+ */
+export async function signEvmHash(
+  nitDir: string,
+  hash: Uint8Array,
+): Promise<{ r: string; s: string; v: number; recovery: number; signature: string }> {
+  if (hash.length !== 32) {
+    throw new Error(`Expected 32-byte hash, got ${hash.length} bytes`);
+  }
+
+  const keyPath = join(nitDir, 'identity', 'agent.key');
+  const privBase64 = (await fs.readFile(keyPath, 'utf-8')).trim();
+  const ed25519Seed = Buffer.from(privBase64, 'base64');
+  const privKey = deriveSecp256k1Seed(ed25519Seed);
+
+  // Sign with recovery byte (65 bytes: r[32] || s[32] || recovery[1])
+  const sigBytes = secp256k1.sign(hash, privKey, { prehash: false, format: 'recovered' });
+  const sigObj = secp256k1.Signature.fromBytes(sigBytes, 'recovered');
+  const r = sigObj.r.toString(16).padStart(64, '0');
+  const s = sigObj.s.toString(16).padStart(64, '0');
+  const recovery = sigObj.recovery!;
+  const v = 27 + recovery;
+  const signature = '0x' + r + s + v.toString(16).padStart(2, '0');
+
+  return { r: '0x' + r, s: '0x' + s, v, recovery, signature };
+}
+
+/**
+ * Sign raw bytes with the agent's Ed25519 private key.
+ * Returns 64-byte signature as Uint8Array.
+ *
+ * For Solana transactions: the caller provides the serialized message bytes.
+ */
+export async function signSolanaBytes(
+  nitDir: string,
+  message: Uint8Array,
+): Promise<Uint8Array> {
+  const privateKey = await loadPrivateKey(nitDir);
+  const sig = cryptoSign(null, Buffer.from(message), privateKey);
+  return new Uint8Array(sig);
 }
