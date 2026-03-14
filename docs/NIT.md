@@ -85,11 +85,17 @@ nit derives blockchain wallet addresses deterministically from the Ed25519 keypa
 
 Both addresses are shown in `nit init` and `nit status`. No additional keys are stored — secp256k1 is derived on the fly from the existing Ed25519 seed.
 
+Agents can sign and broadcast transactions from these wallets. nit provides minimal primitives — the agent constructs the transaction, nit signs it and broadcasts to a configured RPC endpoint.
+
 Programmatic access:
 - `getSolanaAddress(nitDir)` → base58 Solana address
 - `getEvmAddress(nitDir)` → EIP-55 checksummed Ethereum address
 - `getWalletAddresses(nitDir)` → `{ solana, ethereum }`
 - `loadSecp256k1RawKeyPair(nitDir)` → 64-byte Uint8Array for EVM transaction signing
+- `signEvmHash(nitDir, hash)` → ECDSA signature with recovery parameter (r, s, v)
+- `signSolanaBytes(nitDir, message)` → 64-byte Ed25519 signature
+- `signTx(chain, data)` → sign transaction data (hex), returns `{ signature, recovery, address }`
+- `broadcast(chain, signedTx)` → submit to configured RPC endpoint, returns `{ txHash, rpcUrl }`
 
 ### Branches
 
@@ -333,6 +339,10 @@ All commands run in a directory containing `agent-card.json` and `.nit/`.
 | `nit sign "message"` | Sign a message with the agent's Ed25519 private key, output base64 signature |
 | `nit sign --login <domain>` | Generate a JSON login payload (`agent_id`, `domain`, `timestamp`, `signature`) for app auth |
 | `nit remote` | Show remote info (URL, agent ID, auth method) |
+| `nit sign-tx --chain <c> <data>` | Sign transaction data (EVM: 32-byte keccak256 hash, Solana: message bytes) with identity key |
+| `nit broadcast --chain <c> <tx>` | Broadcast signed transaction to configured RPC endpoint |
+| `nit rpc` | Show configured RPC endpoints |
+| `nit rpc set-url <chain> <url>` | Set RPC endpoint for a chain (stored in `.nit/config` under `[rpc "chain"]`) |
 
 ---
 

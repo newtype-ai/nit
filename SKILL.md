@@ -2,7 +2,7 @@
 name: nit
 description: Git for agent identity — one identity, any apps
 metadata:
-  version: 0.4.8
+  version: 0.4.9
 ---
 
 # nit — Git for Agent Identity
@@ -74,17 +74,22 @@ Your Ed25519 keypair isn't just for signing — it's the root for blockchain wal
 - **Solana**: `base58(ed25519_pubkey)` — your public key *is* your Solana address. Derivable from your public key alone.
 - **EVM** (Ethereum, BSC, Polygon, Arbitrum, etc.): Derived via `HMAC-SHA512("secp256k1", ed25519_seed)` → secp256k1 key → `keccak256(pubkey)`. Requires your private key.
 
-One identity, multiple chains. No seed phrases, no extra key management.
+One identity, multiple chains. No seed phrases, no extra key management. Agents can sign and broadcast transactions directly.
 
 ```bash
 nit status   # shows your wallet addresses
+nit sign-tx --chain evm <hash>   # sign a transaction
+nit broadcast --chain evm <tx>   # broadcast to RPC
 ```
 
 ```typescript
-import { getWalletAddresses, getSolanaAddress, getEvmAddress } from '@newtype-ai/nit';
+import { getWalletAddresses, getSolanaAddress, getEvmAddress, signTx, broadcast } from '@newtype-ai/nit';
 
 const wallets = await getWalletAddresses(nitDir);
 // { solana: "7Xf3...", ethereum: "0x1a2b..." }
+
+const sig = await signTx('evm', '0x<32-byte-hash>');
+// { chain: 'evm', signature: '0x...', recovery: 0, address: '0x...' }
 ```
 
 ## Quick Start
@@ -232,6 +237,10 @@ nit push --all
 | `nit remote` | Show remote URL, agent ID, auth method |
 | `nit remote add <name> <url>` | Add a new remote |
 | `nit remote set-url <name> <url>` | Change a remote's URL |
+| `nit sign-tx --chain <c> <data>` | Sign transaction data (EVM: 32-byte hash, Solana: message bytes) |
+| `nit broadcast --chain <c> <tx>` | Broadcast signed transaction to configured RPC endpoint |
+| `nit rpc` | Show configured RPC endpoints |
+| `nit rpc set-url <chain> <url>` | Set RPC endpoint for a chain |
 
 ## Programmatic API
 
@@ -241,6 +250,7 @@ nit is also a library. Import it as `@newtype-ai/nit`:
 import {
   init, commit, branch, checkout, push, status, sign, loginPayload,
   getWalletAddresses, getSolanaAddress, getEvmAddress, loadRawKeyPair,
+  signTx, broadcast, rpcSetUrl, rpcInfo,
 } from '@newtype-ai/nit';
 
 await init();
@@ -256,6 +266,13 @@ const payload = await loginPayload('moltbook.com');
 // Customize card for this app, then commit & push
 await commit('configure for moltbook.com');
 await push();
+
+// Sign and broadcast transactions
+await rpcSetUrl('evm', 'https://eth.llamarpc.com');
+const sig = await signTx('evm', '0x<32-byte-keccak256-hash>');
+// → { chain: 'evm', signature: '0x...', recovery: 0, address: '0x...' }
+await broadcast('evm', '0x<signed-tx-hex>');
+// → { chain: 'evm', txHash: '0x...', rpcUrl: 'https://...' }
 ```
 
 Full playbook: [newtype-ai.org/nit/skill.md](https://newtype-ai.org/nit/skill.md)

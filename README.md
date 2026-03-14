@@ -71,9 +71,12 @@ One keypair, multiple chains. No seed phrases, no extra key management.
 
 - **Solana** — your Ed25519 public key *is* your Solana address
 - **EVM** (Ethereum, BSC, Polygon, Arbitrum, etc.) — deterministic secp256k1 derivation from your Ed25519 seed
+- **Sign & broadcast** — sign transactions and send them to any RPC endpoint
 
 ```bash
 nit status   # shows your wallet addresses
+nit sign-tx --chain evm <hash>   # sign a transaction
+nit broadcast --chain evm <tx>   # broadcast to RPC
 ```
 
 ### Skill resolution
@@ -116,6 +119,10 @@ Pure Node.js builtins. No bloat.
 | `nit remote` | Show remote URL and credential status |
 | `nit remote add <name> <url>` | Add a new remote |
 | `nit remote set-url <name> <url>` | Change a remote's URL |
+| `nit sign-tx --chain <c> <data>` | Sign transaction data (EVM: 32-byte hash, Solana: message bytes) |
+| `nit broadcast --chain <c> <tx>` | Broadcast signed transaction to configured RPC endpoint |
+| `nit rpc` | Show configured RPC endpoints |
+| `nit rpc set-url <chain> <url>` | Set RPC endpoint for a chain |
 
 ## How It Works
 
@@ -177,7 +184,10 @@ your-project/
 ## Programmatic API
 
 ```typescript
-import { init, commit, checkout, branch, push, status, sign, loginPayload, loadRawKeyPair, getWalletAddresses } from '@newtype-ai/nit';
+import {
+  init, commit, checkout, branch, push, status, sign, loginPayload,
+  loadRawKeyPair, getWalletAddresses, signTx, broadcast, rpcSetUrl,
+} from '@newtype-ai/nit';
 
 await init();
 
@@ -196,6 +206,13 @@ const keypair = await loadRawKeyPair('/path/to/.nit');
 // Get blockchain wallet addresses (derived from your identity)
 const addresses = await getWalletAddresses('/path/to/.nit');
 // → { solana: "C54kvW3...", ethereum: "0x2317..." }
+
+// Sign and broadcast transactions
+await rpcSetUrl('evm', 'https://eth.llamarpc.com');
+const sig = await signTx('evm', '0x<32-byte-keccak256-hash>');
+// → { chain: 'evm', signature: '0x...', recovery: 0, address: '0x...' }
+await broadcast('evm', '0x<signed-tx-hex>');
+// → { chain: 'evm', txHash: '0x...', rpcUrl: 'https://...' }
 ```
 
 ## License
