@@ -23,7 +23,12 @@ import {
   broadcast,
   rpcSetUrl,
   rpcInfo,
+  authSet,
+  authShow,
+  isFirstAuthSetup,
+  markAuthSetupShown,
 } from './index.js';
+import type { AuthProvider } from './types.js';
 import { formatDiff } from './diff.js';
 import { autoUpdate, version as nitVersion } from './update-check.js';
 
@@ -80,6 +85,9 @@ async function main() {
         break;
       case 'rpc':
         await cmdRpc(args);
+        break;
+      case 'auth':
+        await cmdAuth(args);
         break;
       case 'help':
       case '--help':
@@ -412,6 +420,92 @@ async function cmdRpc(args: string[]) {
   }
 }
 
+async function cmdAuth(args: string[]) {
+  const subcommand = args[0];
+
+  if (subcommand === 'set') {
+    const domain = args[1];
+    if (!domain) {
+      console.error('Usage: nit auth set <domain> --provider <google|github|x> --account <email>');
+      process.exit(1);
+    }
+
+    const providerIndex = args.indexOf('--provider');
+    if (providerIndex === -1 || !args[providerIndex + 1]) {
+      console.error('Missing --provider. Usage: nit auth set <domain> --provider <google|github|x> --account <email>');
+      process.exit(1);
+    }
+    const provider = args[providerIndex + 1];
+    const validProviders: AuthProvider[] = ['google', 'github', 'x'];
+    if (!validProviders.includes(provider as AuthProvider)) {
+      console.error(`Unknown provider: ${provider}. Use: google, github, x`);
+      process.exit(1);
+    }
+
+    const accountIndex = args.indexOf('--account');
+    if (accountIndex === -1 || !args[accountIndex + 1]) {
+      console.error('Missing --account. Usage: nit auth set <domain> --provider <google|github|x> --account <email>');
+      process.exit(1);
+    }
+    const account = args[accountIndex + 1];
+
+    // Show Chrome DevTools MCP setup checklist on first run
+    if (await isFirstAuthSetup()) {
+      console.log(yellow(bold('Chrome DevTools MCP setup (one-time):')));
+      console.log();
+      console.log('  1. Open Chrome on this Mac (log into Google/GitHub/X if not already)');
+      console.log('  2. Go to chrome://inspect/#remote-debugging and enable it');
+      console.log('  3. Keep Chrome open');
+      console.log('  4. Run: openclaw config set browser.defaultProfile "user"');
+      console.log('  5. Approve Chrome\'s attach prompt when OpenClaw connects');
+      console.log();
+      await markAuthSetupShown();
+    }
+
+    const result = await authSet(domain, provider as AuthProvider, account);
+
+    if (result.createdBranch) {
+      console.log(`Created branch '${green(result.branch)}'`);
+    }
+    if (result.switchedBranch) {
+      console.log(`Switched to branch '${green(result.switchedBranch)}'`);
+    }
+    console.log(`${green('✓')} Auth configured for ${bold(domain)}: ${result.provider} (${result.account})`);
+    console.log(dim(`  Updated SKILL.md: ${result.skillId}/SKILL.md`));
+    return;
+  }
+
+  if (subcommand === 'show') {
+    const domain = args[1];
+    const results = await authShow(domain);
+
+    if (results.length === 0) {
+      if (domain) {
+        console.log(dim(`No auth configured for '${domain}'.`));
+      } else {
+        console.log(dim('No branches with auth configured.'));
+      }
+      return;
+    }
+
+    for (const r of results) {
+      if (r.auth) {
+        console.log(`  ${bold(r.branch)}: ${r.auth.provider} (${r.auth.account})`);
+      } else {
+        console.log(`  ${bold(r.branch)}: ${dim('(no auth)')}`);
+      }
+    }
+    return;
+  }
+
+  if (subcommand) {
+    console.error(`nit auth: unknown subcommand '${subcommand}'`);
+  }
+  console.error('Usage: nit auth set <domain> --provider <google|github|x> --account <email>');
+  console.error('       nit auth show [domain]');
+  process.exit(1);
+}
+
 // ---------------------------------------------------------------------------
 // Help
 // ---------------------------------------------------------------------------
@@ -440,6 +534,9 @@ ${bold('Commands:')}
   broadcast --chain <c> <tx>  Send signed tx to RPC endpoint
   rpc                Show configured RPC endpoints
   rpc set-url <c> <url>  Set RPC endpoint for a chain
+  auth set <dom> --provider <p> --account <a>
+                     Configure OAuth auth for a branch
+  auth show [dom]    Show auth config for branch(es)
 
 ${bold('Examples:')}
   nit init

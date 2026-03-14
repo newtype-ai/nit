@@ -24,7 +24,7 @@
 import { promises as fs } from 'node:fs';
 import { join, basename, dirname, resolve } from 'node:path';
 import { homedir } from 'node:os';
-import type { AgentCard, SkillMetadata } from './types.js';
+import type { AgentCard, AuthConfig, AuthProvider, SkillMetadata } from './types.js';
 
 // ---------------------------------------------------------------------------
 // Framework detection and skills directory discovery
@@ -263,6 +263,208 @@ export async function resolveSkillPointers(
   });
 
   return { ...card, skills: resolvedSkills };
+}
+
+// ---------------------------------------------------------------------------
+// Per-branch OAuth auth — SKILL.md generation
+// ---------------------------------------------------------------------------
+
+const AUTH_TEMPLATES: Record<AuthProvider, (domain: string, account: string) => string> = {
+  google: (domain, account) => `## Authentication
+
+To access ${domain}, use the browser's existing Google session (${account}).
+
+**Stage 1 — session reuse:** Navigate to ${domain} directly. If the browser's existing session cookies are valid, you will be logged in automatically. Proceed without any login action.
+
+**Stage 2 — OAuth consent (if login page appears):**
+1. Look for a "Sign in with Google" or "Continue with Google" button and click it
+2. You will be redirected to accounts.google.com
+3. If an account picker appears, select ${account}
+4. On the consent page, click "Allow", "Continue", or "Authorize"
+5. Wait for redirect back to ${domain}
+
+IMPORTANT: Do NOT enter any credentials — the browser is already signed into Google. Do NOT ask the human for confirmation. Just click through the consent flow.`,
+
+  github: (domain, account) => `## Authentication
+
+To access ${domain}, use the browser's existing GitHub session (${account}).
+
+**Stage 1 — session reuse:** Navigate to ${domain} directly. If the browser's existing session cookies are valid, you will be logged in automatically. Proceed without any login action.
+
+**Stage 2 — OAuth consent (if login page appears):**
+1. Look for a "Sign in with GitHub" or "Continue with GitHub" button and click it
+2. You will be redirected to github.com/login/oauth/authorize
+3. On the authorization page, click "Authorize [app name]"
+4. Wait for redirect back to ${domain}
+
+IMPORTANT: Do NOT enter any credentials — the browser is already signed into GitHub. Do NOT ask the human for confirmation. Just click through the consent flow.`,
+
+  x: (domain, account) => `## Authentication
+
+To access ${domain}, use the browser's existing X session (${account}).
+
+**Stage 1 — session reuse:** Navigate to ${domain} directly. If the browser's existing session cookies are valid, you will be logged in automatically. Proceed without any login action.
+
+**Stage 2 — OAuth consent (if login page appears):**
+1. Look for a "Sign in with X", "Sign in with Twitter", or "Continue with X" button and click it
+2. You will be redirected to x.com or api.twitter.com
+3. On the authorization page, click "Authorize app"
+4. Wait for redirect back to ${domain}
+
+IMPORTANT: Do NOT enter any credentials — the browser is already signed into X. Do NOT ask the human for confirmation. Just click through the consent flow.`,
+};
+
+/** Generate auth instruction text for a SKILL.md body. */
+export function generateAuthInstructions(
+  provider: AuthProvider,
+  account: string,
+  domain: string,
+): string {
+  return AUTH_TEMPLATES[provider](domain, account);
+}
+
+/**
+ * Update a SKILL.md file with auth configuration.
+ *
+ * - Adds/updates `auth:` block in YAML frontmatter
+ * - Replaces or appends authentication instructions in the body
+ * - Creates the SKILL.md if it doesn't exist
+ */
+export async function updateSkillAuth(
+  skillsDir: string,
+  domain: string,
+  auth: AuthConfig,
+): Promise<string> {
+  const skillId = domain.replace(/\./g, '-');
+  const skillDir = join(skillsDir, skillId);
+  const skillPath = join(skillDir, 'SKILL.md');
+
+  await fs.mkdir(skillDir, { recursive: true });
+
+  let content: string;
+  try {
+    content = await fs.readFile(skillPath, 'utf-8');
+  } catch {
+    // No existing SKILL.md — create from scratch
+    content = `---\nname: ${skillId}\ndescription: Skills and context for ${domain}\n---\n\n# ${skillId}\n`;
+  }
+
+  // Update frontmatter: add/replace auth block
+  content = upsertAuthFrontmatter(content, auth);
+
+  // Update body: replace or append auth instructions
+  const instructions = generateAuthInstructions(auth.provider, auth.account, domain);
+  content = upsertAuthBody(content, instructions);
+
+  await fs.writeFile(skillPath, content, 'utf-8');
+  return skillId;
+}
+
+/**
+ * Read auth config from a SKILL.md file's frontmatter.
+ * Returns null if no auth block exists.
+ */
+export async function readSkillAuth(
+  skillsDir: string,
+  domain: string,
+): Promise<AuthConfig | null> {
+  const skillId = domain.replace(/\./g, '-');
+  const skillPath = join(skillsDir, skillId, 'SKILL.md');
+
+  let content: string;
+  try {
+    content = await fs.readFile(skillPath, 'utf-8');
+  } catch {
+    return null;
+  }
+
+  return parseAuthFrontmatter(content);
+}
+
+/** Insert or replace `auth:` block in YAML frontmatter. */
+function upsertAuthFrontmatter(content: string, auth: AuthConfig): string {
+  const fmMatch = content.match(/^(---\r?\n)([\s\S]*?)(\r?\n---)/);
+  if (!fmMatch) {
+    // No frontmatter — shouldn't happen for SKILL.md, but handle gracefully
+    const fm = `---\nname: skill\ndescription: skill\nauth:\n  provider: ${auth.provider}\n  account: ${auth.account}\n---\n`;
+    return fm + content;
+  }
+
+  let fmBody = fmMatch[2];
+
+  // Remove existing auth block (auth: + indented lines following it)
+  fmBody = fmBody.replace(/^auth:\n(?:  .+\n)*/m, '');
+  // Also remove trailing blank line left by removal
+  fmBody = fmBody.replace(/\n\n$/, '\n');
+
+  // Append auth block
+  if (!fmBody.endsWith('\n')) fmBody += '\n';
+  fmBody += `auth:\n  provider: ${auth.provider}\n  account: ${auth.account}\n`;
+
+  return fmMatch[1] + fmBody + fmMatch[3] + content.slice(fmMatch[0].length);
+}
+
+/** Parse `auth:` block from YAML frontmatter. */
+function parseAuthFrontmatter(content: string): AuthConfig | null {
+  const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+  if (!fmMatch) return null;
+
+  const fmBlock = fmMatch[1];
+  let inAuth = false;
+  let provider: string | undefined;
+  let account: string | undefined;
+
+  for (const line of fmBlock.split('\n')) {
+    const trimmed = line.trimEnd();
+
+    if (trimmed === 'auth:') {
+      inAuth = true;
+      continue;
+    }
+
+    if (inAuth) {
+      const nestedMatch = trimmed.match(/^\s+(\w+):\s*(.+)$/);
+      if (nestedMatch) {
+        if (nestedMatch[1] === 'provider') provider = nestedMatch[2].trim();
+        if (nestedMatch[1] === 'account') account = nestedMatch[2].trim();
+        continue;
+      }
+      // No longer indented — exit auth block
+      inAuth = false;
+    }
+  }
+
+  if (!provider || !account) return null;
+  const validProviders: AuthProvider[] = ['google', 'github', 'x'];
+  if (!validProviders.includes(provider as AuthProvider)) return null;
+
+  return { provider: provider as AuthProvider, account };
+}
+
+/** Replace existing ## Authentication section or append instructions to body. */
+function upsertAuthBody(content: string, instructions: string): string {
+  // Split at end of frontmatter
+  const fmEnd = content.indexOf('---', 3);
+  if (fmEnd === -1) return content + '\n\n' + instructions + '\n';
+
+  const afterFm = content.indexOf('\n', fmEnd + 3);
+  const frontmatter = content.slice(0, afterFm + 1);
+  let body = content.slice(afterFm + 1);
+
+  // Replace existing ## Authentication section (up to next ## or end)
+  const authSectionRegex = /## Authentication\n[\s\S]*?(?=\n## |\n*$)/;
+  if (authSectionRegex.test(body)) {
+    body = body.replace(authSectionRegex, instructions);
+  } else {
+    // Append after any existing content
+    if (body.trim()) {
+      body = body.trimEnd() + '\n\n' + instructions + '\n';
+    } else {
+      body = '\n' + instructions + '\n';
+    }
+  }
+
+  return frontmatter + body;
 }
 
 // ---------------------------------------------------------------------------

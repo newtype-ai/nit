@@ -9,6 +9,8 @@ import { promises as fs, statSync } from 'node:fs';
 import { join, basename, dirname, resolve } from 'node:path';
 import type {
   AgentCard,
+  AuthConfig,
+  AuthProvider,
   NitCommit,
   NitBranch,
   NitRpcConfig,
@@ -47,7 +49,7 @@ import {
   signMessage,
   loadRawKeyPair,
 } from './identity.js';
-import { discoverSkills, discoverSkillsDir, resolveSkillPointers, createSkillTemplate } from './skills.js';
+import { discoverSkills, discoverSkillsDir, resolveSkillPointers, createSkillTemplate, updateSkillAuth, readSkillAuth } from './skills.js';
 import { getWalletAddresses, getSolanaAddress, getEvmAddress, loadSecp256k1RawKeyPair } from './wallet.js';
 import { diffCards } from './diff.js';
 import {
@@ -61,6 +63,8 @@ import { signTx as txSignTx, broadcast as txBroadcast } from './tx.js';
 export type {
   AgentCard,
   AgentCardSkill,
+  AuthConfig,
+  AuthProvider,
   NitCommit,
   NitBranch,
   NitHead,
@@ -870,5 +874,135 @@ export async function rpcInfo(
   const nitDir = findNitDir(options?.projectDir);
   const config = await readConfig(nitDir);
   return config.rpc ?? {};
+}
+
+// ---------------------------------------------------------------------------
+// auth — per-branch OAuth config for OpenClaw browser automation
+// ---------------------------------------------------------------------------
+
+export interface AuthSetResult {
+  branch: string;
+  skillId: string;
+  provider: AuthProvider;
+  account: string;
+  switchedBranch?: string;
+  createdBranch?: boolean;
+}
+
+export interface AuthShowResult {
+  branch: string;
+  auth: AuthConfig | null;
+}
+
+const CHROME_SETUP_SHOWN_KEY = '.nit-auth-setup-shown';
+
+/**
+ * Configure OAuth authentication for a branch.
+ *
+ * 1. Switches to the target branch (creates if needed)
+ * 2. Updates the branch's SKILL.md with auth frontmatter + consent instructions
+ * 3. Adds skill pointer to agent-card.json if not present
+ *
+ * The SKILL.md tells OpenClaw which OAuth provider and account to use when
+ * the agent encounters a login page. The agent reuses the human's existing
+ * Chrome session (browser-profile = user) and only handles OAuth consent
+ * flows — never enters credentials.
+ */
+export async function authSet(
+  domain: string,
+  provider: AuthProvider,
+  account: string,
+  options?: { projectDir?: string },
+): Promise<AuthSetResult> {
+  const nitDir = findNitDir(options?.projectDir);
+  const projDir = projectDir(nitDir);
+
+  // Switch to domain branch (create if needed)
+  let switchedBranch: string | undefined;
+  let createdBranch = false;
+  const currentBranch = await getCurrentBranch(nitDir);
+  if (currentBranch !== domain) {
+    const isNew = !(await getBranch(nitDir, domain));
+    if (isNew) {
+      const headHash = await resolveHead(nitDir);
+      await setBranch(nitDir, domain, headHash);
+      createdBranch = true;
+    }
+    await checkout(domain, options);
+    switchedBranch = domain;
+  }
+
+  // Resolve skills directory
+  const skillsDir = await getSkillsDir(nitDir) ?? await discoverSkillsDir(projDir);
+
+  // Update SKILL.md with auth config + instructions
+  const auth: AuthConfig = { provider, account };
+  const skillId = await updateSkillAuth(skillsDir, domain, auth);
+
+  // Add skill pointer to agent card if not present
+  const card = await readWorkingCard(nitDir);
+  if (!card.skills.some((s) => s.id === skillId)) {
+    card.skills.push({ id: skillId });
+    await writeWorkingCard(nitDir, card);
+  }
+
+  return { branch: domain, skillId, provider, account, switchedBranch, createdBranch };
+}
+
+/**
+ * Show auth config for a specific branch, or all branches with auth configured.
+ */
+export async function authShow(
+  domain?: string,
+  options?: { projectDir?: string },
+): Promise<AuthShowResult[]> {
+  const nitDir = findNitDir(options?.projectDir);
+  const projDir = projectDir(nitDir);
+  const skillsDir = await getSkillsDir(nitDir) ?? await discoverSkillsDir(projDir);
+  const results: AuthShowResult[] = [];
+
+  if (domain) {
+    // Show auth for a specific branch
+    const auth = await readSkillAuth(skillsDir, domain);
+    results.push({ branch: domain, auth });
+  } else {
+    // Show auth for all branches
+    const branches = await listAllBranches(nitDir);
+    for (const b of branches) {
+      const auth = await readSkillAuth(skillsDir, b.name);
+      if (auth) {
+        results.push({ branch: b.name, auth });
+      }
+    }
+  }
+
+  return results;
+}
+
+/**
+ * Check if this is the first time auth is being configured.
+ * Returns true if the Chrome DevTools MCP setup checklist should be shown.
+ */
+export async function isFirstAuthSetup(
+  options?: { projectDir?: string },
+): Promise<boolean> {
+  const nitDir = findNitDir(options?.projectDir);
+  const markerPath = join(nitDir, CHROME_SETUP_SHOWN_KEY);
+  try {
+    await fs.access(markerPath);
+    return false;
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * Mark that the Chrome setup checklist has been shown.
+ */
+export async function markAuthSetupShown(
+  options?: { projectDir?: string },
+): Promise<void> {
+  const nitDir = findNitDir(options?.projectDir);
+  await fs.writeFile(join(nitDir, CHROME_SETUP_SHOWN_KEY), '', 'utf-8');
 }
 

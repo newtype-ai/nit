@@ -181,6 +181,15 @@ export interface BroadcastResult {
   rpcUrl: string;
 }
 
+/** OAuth provider for per-branch authentication config. */
+export type AuthProvider = 'google' | 'github' | 'x';
+
+/** Per-branch authentication configuration stored in SKILL.md frontmatter. */
+export interface AuthConfig {
+  provider: AuthProvider;
+  account: string;
+}
+
 /** Result of generating a login payload for app authentication. */
 export interface LoginPayload {
   agent_id: string;
