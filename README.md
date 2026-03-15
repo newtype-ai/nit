@@ -191,7 +191,8 @@ your-project/
 ```typescript
 import {
   init, commit, checkout, branch, push, status, sign, loginPayload,
-  loadRawKeyPair, getWalletAddresses, signTx, broadcast, rpcSetUrl, authSet, authShow,
+  loadRawKeyPair, getWalletAddresses, signTx, broadcast, rpcSetUrl,
+  authSet, authShow, reset, show, pull,
 } from '@newtype-ai/nit';
 
 await init();

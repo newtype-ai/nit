@@ -265,7 +265,8 @@ nit is also a library. Import it as `@newtype-ai/nit`:
 import {
   init, commit, branch, checkout, push, status, sign, loginPayload,
   getWalletAddresses, getSolanaAddress, getEvmAddress, loadRawKeyPair,
-  signTx, broadcast, rpcSetUrl, rpcInfo, authSet, authShow,
+  signTx, broadcast, rpcSetUrl, rpcInfo,
+  authSet, authShow, reset, show, pull,
 } from '@newtype-ai/nit';
 
 await init();

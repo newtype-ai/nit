@@ -275,6 +275,107 @@ export async function resolveSkillPointers(
 }
 
 // ---------------------------------------------------------------------------
+// nit's own SKILL.md — placed in skills directory during init
+// ---------------------------------------------------------------------------
+
+/**
+ * Create the nit skill in the agent's skills directory.
+ *
+ * Tries to fetch the latest from https://newtype-ai.org/nit/skill.md.
+ * Falls back to a minimal embedded template covering the essentials.
+ *
+ * Returns the path to the created SKILL.md.
+ */
+export async function createNitSkill(skillsDir: string): Promise<string> {
+  const skillDir = join(skillsDir, 'nit');
+  const skillPath = join(skillDir, 'SKILL.md');
+
+  // Don't overwrite if it already exists
+  try {
+    await fs.access(skillPath);
+    return skillPath;
+  } catch {
+    // Doesn't exist — create it
+  }
+
+  // Try to fetch the latest from the web
+  let content: string | null = null;
+  try {
+    const res = await fetch('https://newtype-ai.org/nit/skill.md', {
+      headers: { 'Accept': 'text/markdown, text/plain' },
+      signal: AbortSignal.timeout(5000),
+    });
+    if (res.ok) {
+      const text = await res.text();
+      if (text.startsWith('---')) {
+        content = text;
+      }
+    }
+  } catch {
+    // Offline — fall through to embedded template
+  }
+
+  if (!content) {
+    content = nitSkillFallback();
+  }
+
+  await fs.mkdir(skillDir, { recursive: true });
+  await fs.writeFile(skillPath, content, 'utf-8');
+  return skillPath;
+}
+
+/** Minimal nit SKILL.md covering the essential knowledge an agent needs. */
+function nitSkillFallback(): string {
+  return `---
+name: nit
+description: Git for agent identity — one identity, any apps
+---
+
+# nit — Git for Agent Identity
+
+nit gives you a self-sovereign Ed25519 identity. You generate your own keypair, create your own agent card, and prove who you are with cryptographic signatures.
+
+## Quick Start
+
+\`\`\`bash
+nit init                     # generate identity + agent-card.json
+nit commit -m "Set up"       # snapshot your card
+nit push                     # publish to remote
+nit sign --login <domain>    # switch to domain branch + generate login payload
+\`\`\`
+
+## Browser Authentication (OAuth)
+
+Most apps don't support nit-native login yet. For these, use the human's existing browser sessions:
+
+1. Run \`nit sign --login <domain>\` — generates a SKILL.md with auth instructions
+2. Open the browser with \`profile="user"\` — attaches to the human's running Chrome via Chrome DevTools MCP, inheriting all existing login sessions (Google, GitHub, X, etc.)
+3. Navigate to the domain. If login required, click OAuth buttons. The browser handles the rest.
+
+**Rules:** Do NOT enter credentials. Do NOT ask the human. MUST use \`profile="user"\`.
+
+## Key Commands
+
+| Command | What it does |
+|---------|-------------|
+| \`nit init\` | Create identity |
+| \`nit status\` | Show identity, branch, wallet addresses |
+| \`nit commit -m "msg"\` | Snapshot agent-card.json |
+| \`nit push [--all]\` | Push to remote |
+| \`nit pull [--all]\` | Pull from remote |
+| \`nit sign --login <domain>\` | Switch to domain branch + login payload |
+| \`nit branch [name]\` | List or create branches |
+| \`nit checkout <branch>\` | Switch branch |
+| \`nit reset [target]\` | Discard uncommitted changes |
+| \`nit show [target]\` | Show commit + card content |
+| \`nit log\` | Commit history |
+| \`nit diff [target]\` | Compare cards |
+
+Full docs: https://newtype-ai.org/nit/skill.md
+`;
+}
+
+// ---------------------------------------------------------------------------
 // Per-branch OAuth auth — SKILL.md generation
 // ---------------------------------------------------------------------------
 

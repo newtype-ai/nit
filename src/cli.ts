@@ -149,10 +149,12 @@ async function cmdInit() {
     console.log(`  Skills:      ${dim('(none discovered)')}`);
   }
   console.log();
-  console.log(dim('Created .nit/ with initial commit on main.'));
-  console.log(dim('Fund the wallet addresses above to use blockchain features in apps.'));
+  console.log(`  nit skill:   ${dim(result.nitSkillPath)}`);
   console.log();
-  console.log(`Next: open ${bold('agent-card.json')} and set your name, description, and skills.`);
+  console.log(dim('Created .nit/ with initial commit on main.'));
+  console.log();
+  console.log(`IMPORTANT: Read the nit skill file for complete usage instructions:`);
+  console.log(`  cat ${result.nitSkillPath}`);
 }
 
 async function cmdStatus() {

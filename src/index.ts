@@ -49,7 +49,7 @@ import {
   signMessage,
   loadRawKeyPair,
 } from './identity.js';
-import { discoverSkills, discoverSkillsDir, resolveSkillPointers, createSkillTemplate, updateSkillAuth, readSkillAuth } from './skills.js';
+import { discoverSkills, discoverSkillsDir, resolveSkillPointers, createSkillTemplate, updateSkillAuth, readSkillAuth, createNitSkill } from './skills.js';
 import { getWalletAddresses, getSolanaAddress, getEvmAddress, loadSecp256k1RawKeyPair } from './wallet.js';
 import { diffCards } from './diff.js';
 import {
@@ -219,6 +219,7 @@ export interface InitResult {
   walletAddresses: WalletAddresses;
   skillsFound: string[];
   skillsDir: string;
+  nitSkillPath: string;
 }
 
 /**
@@ -327,6 +328,9 @@ export async function init(options?: {
     skillsDir,
   });
 
+  // Place nit's own SKILL.md in the skills directory
+  const nitSkillPath = await createNitSkill(skillsDir);
+
   // Derive wallet addresses
   const walletAddresses = await getWalletAddresses(nitDir);
 
@@ -337,6 +341,7 @@ export async function init(options?: {
     walletAddresses,
     skillsFound,
     skillsDir,
+    nitSkillPath,
   };
 }
 
