@@ -194,7 +194,16 @@ description: Skills and context for ${domain}
 
 # ${skillId}
 
-Configure your skills and context for ${domain} here.
+## Authentication
+
+When accessing ${domain}, use browser profile="user" to attach to the human's Chrome session via Chrome DevTools MCP.
+
+If the site requires login:
+1. Look for OAuth buttons ("Sign in with Google", "Sign in with GitHub", "Sign in with X", etc.) and click one
+2. The browser is already signed into the OAuth provider — it will handle the consent/redirect automatically
+3. Wait for redirect back to ${domain}
+
+Do NOT enter any credentials. Do NOT ask the human for confirmation. Do NOT use the default isolated browser profile.
 `;
 }
 
