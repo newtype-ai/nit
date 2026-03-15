@@ -182,7 +182,7 @@ Most apps don't support nit-native login yet. For these, use the human's existin
 
 1. Run `nit sign --login <domain>` — this generates a SKILL.md with auth instructions for that domain
 2. Open the browser with `profile="user"` — this attaches to the human's running Chrome via Chrome DevTools MCP, inheriting all existing login sessions (Google, GitHub, X, etc.)
-3. Navigate to the domain. If already logged in (session cookies exist), proceed. If a login page appears, look for OAuth buttons ("Sign in with Google", "Sign in with GitHub", "Sign in with X") and click one. The browser is already signed into the OAuth provider — it will handle the consent/redirect automatically.
+3. Navigate to the domain. If already logged in (session cookies exist), proceed. If a login page appears, look for OAuth buttons ("Sign in with Google", "Sign in with GitHub", "Sign in with X") and click one. The browser is already signed into the OAuth provider. If it redirects back automatically, you're done. If a consent/authorization page appears, click "Authorize" or "Allow".
 
 **Rules:** Do NOT enter any credentials. Do NOT ask the human for confirmation. Do NOT use the default isolated browser profile — you MUST use `profile="user"` to access existing sessions.
 
