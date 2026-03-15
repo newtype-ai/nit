@@ -877,6 +877,187 @@ export async function rpcInfo(
 }
 
 // ---------------------------------------------------------------------------
+// reset
+// ---------------------------------------------------------------------------
+
+/**
+ * Restore agent-card.json from a commit, discarding uncommitted changes.
+ *
+ * - No target: restore from HEAD (discard all uncommitted changes)
+ * - Commit hash or branch name: restore card from that commit
+ *
+ * Does NOT move the branch pointer — only overwrites the working card.
+ */
+export async function reset(
+  target?: string,
+  options?: { projectDir?: string },
+): Promise<{ hash: string }> {
+  const nitDir = findNitDir(options?.projectDir);
+
+  let commitHash: string;
+  if (!target) {
+    commitHash = await resolveHead(nitDir);
+  } else {
+    // Check if target is a branch name
+    const branchHash = await getBranch(nitDir, target);
+    if (branchHash) {
+      commitHash = branchHash;
+    } else if (/^[0-9a-f]{64}$/.test(target)) {
+      commitHash = target;
+    } else {
+      throw new Error(`Unknown target "${target}". Provide a branch name or commit hash.`);
+    }
+  }
+
+  const card = await getCardAtCommit(nitDir, commitHash);
+  await writeWorkingCard(nitDir, card);
+  return { hash: commitHash };
+}
+
+// ---------------------------------------------------------------------------
+// show
+// ---------------------------------------------------------------------------
+
+export interface ShowResult {
+  hash: string;
+  card: string;
+  parent: string | null;
+  author: string;
+  timestamp: number;
+  message: string;
+  cardJson: AgentCard;
+}
+
+/**
+ * Show a commit's metadata and card content.
+ *
+ * - No target: show HEAD
+ * - Commit hash or branch name: show that commit
+ */
+export async function show(
+  target?: string,
+  options?: { projectDir?: string },
+): Promise<ShowResult> {
+  const nitDir = findNitDir(options?.projectDir);
+
+  let commitHash: string;
+  if (!target) {
+    commitHash = await resolveHead(nitDir);
+  } else {
+    const branchHash = await getBranch(nitDir, target);
+    if (branchHash) {
+      commitHash = branchHash;
+    } else if (/^[0-9a-f]{64}$/.test(target)) {
+      commitHash = target;
+    } else {
+      throw new Error(`Unknown target "${target}". Provide a branch name or commit hash.`);
+    }
+  }
+
+  const commitRaw = await readObject(nitDir, commitHash);
+  const c = parseCommit(commitHash, commitRaw);
+  const cardJson = await getCardAtCommit(nitDir, commitHash);
+
+  return {
+    hash: c.hash,
+    card: c.card,
+    parent: c.parent,
+    author: c.author,
+    timestamp: c.timestamp,
+    message: c.message,
+    cardJson,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// pull
+// ---------------------------------------------------------------------------
+
+export interface PullResult {
+  branch: string;
+  commitHash: string;
+  updated: boolean;
+}
+
+/**
+ * Fetch current branch (or all branches) from the remote and update local state.
+ *
+ * 1. Fetch card JSON from remote
+ * 2. Write card to object store
+ * 3. Create a commit object
+ * 4. Update branch ref + remote-tracking ref
+ * 5. Write card to working copy (current branch only)
+ */
+export async function pull(options?: {
+  projectDir?: string;
+  remoteName?: string;
+  all?: boolean;
+}): Promise<PullResult[]> {
+  const nitDir = findNitDir(options?.projectDir);
+  const remoteName = options?.remoteName || 'origin';
+  const apiBase = (await getRemoteUrl(nitDir, remoteName)) || DEFAULT_API_BASE;
+  const currentBranch = await getCurrentBranch(nitDir);
+  const agentId = await loadAgentId(nitDir);
+
+  const branches = options?.all
+    ? await listAllBranches(nitDir)
+    : [{ name: currentBranch, commitHash: await resolveHead(nitDir) }];
+
+  const results: PullResult[] = [];
+
+  for (const b of branches) {
+    try {
+      // Fetch card from remote — fetchBranchCard(cardUrl, branch, nitDir?)
+      const { fetchBranchCard } = await import('./remote.js');
+      const cardUrl = `${apiBase}/agent-card/${agentId}`;
+      const remoteCard = await fetchBranchCard(cardUrl, b.name, nitDir);
+
+      // Write card to object store
+      const cardJson = JSON.stringify(remoteCard, null, 2);
+      const cardHash = await writeObject(nitDir, 'card', cardJson);
+
+      // Check if card differs from local
+      const localHash = await getBranch(nitDir, b.name);
+      if (localHash) {
+        const localRaw = await readObject(nitDir, localHash);
+        const localCommit = parseCommit(localHash, localRaw);
+        if (localCommit.card === cardHash) {
+          results.push({ branch: b.name, commitHash: localHash, updated: false });
+          continue;
+        }
+      }
+
+      // Create commit
+      const author = remoteCard.name || b.name;
+      const commitContent = serializeCommit({
+        card: cardHash,
+        parent: localHash,
+        author,
+        timestamp: Math.floor(Date.now() / 1000),
+        message: `Pull from ${remoteName}`,
+      });
+      const commitHash = await writeObject(nitDir, 'commit', commitContent);
+
+      // Update refs
+      await setBranch(nitDir, b.name, commitHash);
+      await setRemoteRef(nitDir, remoteName, b.name, commitHash);
+
+      // Update working copy if this is the current branch
+      if (b.name === currentBranch) {
+        await writeWorkingCard(nitDir, remoteCard);
+      }
+
+      results.push({ branch: b.name, commitHash, updated: true });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      results.push({ branch: b.name, commitHash: '', updated: false });
+    }
+  }
+
+  return results;
+}
+
+// ---------------------------------------------------------------------------
 // auth — per-branch OAuth config for OpenClaw browser automation
 // ---------------------------------------------------------------------------
 

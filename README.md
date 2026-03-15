@@ -114,6 +114,9 @@ Pure Node.js builtins. No bloat.
 | `nit branch [name]` | List branches or create a new one |
 | `nit checkout <branch>` | Switch branch (overwrites agent-card.json) |
 | `nit push [--all]` | Push branch(es) to remote |
+| `nit pull [--all]` | Pull branch(es) from remote |
+| `nit reset [target]` | Restore agent-card.json from HEAD or target |
+| `nit show [target]` | Show commit metadata and card content |
 | `nit sign "msg"` | Sign a message with your Ed25519 key |
 | `nit sign --login <domain>` | Auto-switch to domain branch + generate login payload |
 | `nit remote` | Show remote URL and credential status |

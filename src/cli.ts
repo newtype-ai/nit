@@ -27,6 +27,9 @@ import {
   authShow,
   isFirstAuthSetup,
   markAuthSetupShown,
+  reset,
+  show,
+  pull,
 } from './index.js';
 import type { AuthProvider } from './types.js';
 import { formatDiff } from './diff.js';
@@ -88,6 +91,15 @@ async function main() {
         break;
       case 'auth':
         await cmdAuth(args);
+        break;
+      case 'reset':
+        await cmdReset(args);
+        break;
+      case 'show':
+        await cmdShow(args);
+        break;
+      case 'pull':
+        await cmdPull(args);
         break;
       case 'help':
       case '--help':
@@ -420,6 +432,42 @@ async function cmdRpc(args: string[]) {
   }
 }
 
+async function cmdReset(args: string[]) {
+  const target = args[0];
+  const result = await reset(target);
+  console.log(`Reset to ${dim(result.hash.slice(0, 8))}`);
+}
+
+async function cmdShow(args: string[]) {
+  const target = args[0];
+  const s = await show(target);
+
+  const date = new Date(s.timestamp * 1000).toISOString().slice(0, 19);
+  console.log(`${bold('commit')} ${yellow(s.hash.slice(0, 8))}`);
+  console.log(`Author: ${s.author}`);
+  console.log(`Date:   ${date}`);
+  if (s.parent) {
+    console.log(`Parent: ${dim(s.parent.slice(0, 8))}`);
+  }
+  console.log();
+  console.log(`    ${s.message}`);
+  console.log();
+  console.log(JSON.stringify(s.cardJson, null, 2));
+}
+
+async function cmdPull(args: string[]) {
+  const all = args.includes('--all');
+  const results = await pull({ all });
+
+  for (const r of results) {
+    if (r.updated) {
+      console.log(`${green('✓')} ${r.branch} ← ${dim(r.commitHash.slice(0, 8))}`);
+    } else {
+      console.log(`${dim('—')} ${r.branch} ${dim('(up to date)')}`);
+    }
+  }
+}
+
 async function cmdAuth(args: string[]) {
   const subcommand = args[0];
 
@@ -525,6 +573,9 @@ ${bold('Commands:')}
   branch [name]      List branches or create a new one
   checkout <branch>  Switch branch (overwrites agent-card.json)
   push [--all]       Push branch(es) to remote
+  pull [--all]       Pull branch(es) from remote
+  reset [target]     Restore agent-card.json from HEAD or target
+  show [target]      Show commit metadata and card content
   sign "message"     Sign a message with your Ed25519 key
   sign --login <dom> Switch to domain branch + generate login payload
   remote             Show remote info

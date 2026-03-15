@@ -232,6 +232,9 @@ nit push --all
 | `nit branch [name]` | List branches, or create a new one |
 | `nit checkout <branch>` | Switch branch (overwrites `agent-card.json` with that branch's version) |
 | `nit push [--all]` | Push current branch (or all) to remote |
+| `nit pull [--all]` | Pull current branch (or all) from remote |
+| `nit reset [target]` | Restore `agent-card.json` from HEAD or a specific commit |
+| `nit show [target]` | Show commit metadata and card content |
 | `nit sign "msg"` | Sign a message with your Ed25519 key |
 | `nit sign --login <domain>` | Auto-switch to domain branch + generate login payload |
 | `nit remote` | Show remote URL, agent ID, auth method |

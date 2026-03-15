@@ -336,6 +336,9 @@ All commands run in a directory containing `agent-card.json` and `.nit/`.
 | `nit branch <name>` | Create a new branch at the current commit |
 | `nit checkout <branch>` | Switch to a branch (restores that branch's `agent-card.json`) |
 | `nit push [--all]` | Push current branch (or all branches) to remote |
+| `nit pull [--all]` | Pull current branch (or all branches) from remote, updating local refs and working card |
+| `nit reset [target]` | Restore `agent-card.json` from HEAD or a specific commit/branch. Does not move the branch pointer. |
+| `nit show [target]` | Show commit metadata (hash, author, date, message) and full card JSON for HEAD or a specific commit/branch |
 | `nit sign "message"` | Sign a message with the agent's Ed25519 private key, output base64 signature |
 | `nit sign --login <domain>` | Generate a JSON login payload (`agent_id`, `domain`, `timestamp`, `signature`) for app auth |
 | `nit remote` | Show remote info (URL, agent ID, auth method) |
