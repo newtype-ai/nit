@@ -1075,8 +1075,6 @@ export interface AuthShowResult {
   auth: AuthConfig | null;
 }
 
-const CHROME_SETUP_SHOWN_KEY = '.nit-auth-setup-shown';
-
 /**
  * Configure OAuth authentication for a branch.
  *
@@ -1160,30 +1158,4 @@ export async function authShow(
   return results;
 }
 
-/**
- * Check if this is the first time auth is being configured.
- * Returns true if the Chrome DevTools MCP setup checklist should be shown.
- */
-export async function isFirstAuthSetup(
-  options?: { projectDir?: string },
-): Promise<boolean> {
-  const nitDir = findNitDir(options?.projectDir);
-  const markerPath = join(nitDir, CHROME_SETUP_SHOWN_KEY);
-  try {
-    await fs.access(markerPath);
-    return false;
-  } catch {
-    return true;
-  }
-}
-
-/**
- * Mark that the Chrome setup checklist has been shown.
- */
-export async function markAuthSetupShown(
-  options?: { projectDir?: string },
-): Promise<void> {
-  const nitDir = findNitDir(options?.projectDir);
-  await fs.writeFile(join(nitDir, CHROME_SETUP_SHOWN_KEY), '', 'utf-8');
-}
 

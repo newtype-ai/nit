@@ -25,8 +25,6 @@ import {
   rpcInfo,
   authSet,
   authShow,
-  isFirstAuthSetup,
-  markAuthSetupShown,
   reset,
   show,
   pull,
@@ -496,19 +494,6 @@ async function cmdAuth(args: string[]) {
       process.exit(1);
     }
     const account = args[accountIndex + 1];
-
-    // Show Chrome DevTools MCP setup checklist on first run
-    if (await isFirstAuthSetup()) {
-      console.log(yellow(bold('Chrome DevTools MCP setup (one-time):')));
-      console.log();
-      console.log('  1. Open Chrome on this Mac (log into Google/GitHub/X if not already)');
-      console.log('  2. Go to chrome://inspect/#remote-debugging and enable it');
-      console.log('  3. Keep Chrome open');
-      console.log('  4. Run: openclaw config set browser.defaultProfile "user"');
-      console.log('  5. Approve Chrome\'s attach prompt when OpenClaw connects');
-      console.log();
-      await markAuthSetupShown();
-    }
 
     const result = await authSet(domain, provider as AuthProvider, account);
 

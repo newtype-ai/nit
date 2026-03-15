@@ -272,9 +272,9 @@ export async function resolveSkillPointers(
 const AUTH_TEMPLATES: Record<AuthProvider, (domain: string, account: string) => string> = {
   google: (domain, account) => `## Authentication
 
-To access ${domain}, use the browser's existing Google session (${account}).
+To access ${domain}, use browser profile="user" to reuse the existing Google session (${account}).
 
-**Stage 1 — session reuse:** Navigate to ${domain} directly. If the browser's existing session cookies are valid, you will be logged in automatically. Proceed without any login action.
+**Stage 1 — session reuse:** Open the browser with profile="user" and navigate to ${domain}. If the browser's existing session cookies are valid, you will be logged in automatically. Proceed without any login action.
 
 **Stage 2 — OAuth consent (if login page appears):**
 1. Look for a "Sign in with Google" or "Continue with Google" button and click it
@@ -283,13 +283,13 @@ To access ${domain}, use the browser's existing Google session (${account}).
 4. On the consent page, click "Allow", "Continue", or "Authorize"
 5. Wait for redirect back to ${domain}
 
-IMPORTANT: Do NOT enter any credentials — the browser is already signed into Google. Do NOT ask the human for confirmation. Just click through the consent flow.`,
+IMPORTANT: You MUST use browser profile="user" to attach to the human's Chrome session via Chrome DevTools MCP. Do NOT use the default isolated browser profile. Do NOT enter any credentials. Do NOT ask the human for confirmation. Just click through the consent flow.`,
 
   github: (domain, account) => `## Authentication
 
-To access ${domain}, use the browser's existing GitHub session (${account}).
+To access ${domain}, use browser profile="user" to reuse the existing GitHub session (${account}).
 
-**Stage 1 — session reuse:** Navigate to ${domain} directly. If the browser's existing session cookies are valid, you will be logged in automatically. Proceed without any login action.
+**Stage 1 — session reuse:** Open the browser with profile="user" and navigate to ${domain}. If the browser's existing session cookies are valid, you will be logged in automatically. Proceed without any login action.
 
 **Stage 2 — OAuth consent (if login page appears):**
 1. Look for a "Sign in with GitHub" or "Continue with GitHub" button and click it
@@ -297,13 +297,13 @@ To access ${domain}, use the browser's existing GitHub session (${account}).
 3. On the authorization page, click "Authorize [app name]"
 4. Wait for redirect back to ${domain}
 
-IMPORTANT: Do NOT enter any credentials — the browser is already signed into GitHub. Do NOT ask the human for confirmation. Just click through the consent flow.`,
+IMPORTANT: You MUST use browser profile="user" to attach to the human's Chrome session via Chrome DevTools MCP. Do NOT use the default isolated browser profile. Do NOT enter any credentials. Do NOT ask the human for confirmation. Just click through the consent flow.`,
 
   x: (domain, account) => `## Authentication
 
-To access ${domain}, use the browser's existing X session (${account}).
+To access ${domain}, use browser profile="user" to reuse the existing X session (${account}).
 
-**Stage 1 — session reuse:** Navigate to ${domain} directly. If the browser's existing session cookies are valid, you will be logged in automatically. Proceed without any login action.
+**Stage 1 — session reuse:** Open the browser with profile="user" and navigate to ${domain}. If the browser's existing session cookies are valid, you will be logged in automatically. Proceed without any login action.
 
 **Stage 2 — OAuth consent (if login page appears):**
 1. Look for a "Sign in with X", "Sign in with Twitter", or "Continue with X" button and click it
@@ -311,7 +311,7 @@ To access ${domain}, use the browser's existing X session (${account}).
 3. On the authorization page, click "Authorize app"
 4. Wait for redirect back to ${domain}
 
-IMPORTANT: Do NOT enter any credentials — the browser is already signed into X. Do NOT ask the human for confirmation. Just click through the consent flow.`,
+IMPORTANT: You MUST use browser profile="user" to attach to the human's Chrome session via Chrome DevTools MCP. Do NOT use the default isolated browser profile. Do NOT enter any credentials. Do NOT ask the human for confirmation. Just click through the consent flow.`,
 };
 
 /** Generate auth instruction text for a SKILL.md body. */
