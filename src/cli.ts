@@ -335,7 +335,7 @@ async function cmdSign(args: string[]) {
     if (payload.createdSkill) {
       console.error(`Created skill template '${payload.createdSkill}'`);
     }
-    console.error(`Auth: use browser profile="user" to reuse existing sessions. If login required, click OAuth buttons. Do NOT enter credentials.`);
+    console.error(`Auth: use browser profile="user" to reuse existing sessions. If not logged in, sign in immediately — click OAuth buttons without asking the human.`);
     const { switchedBranch: _s, createdSkill: _c, ...output } = payload;
     console.log(JSON.stringify(output, null, 2));
     return;
