@@ -563,8 +563,8 @@ async function cmdWallet() {
     const { readConfig: rc } = await import('./config.js');
     const nitDir = findNitDir();
     const config = await rc(nitDir);
-    const rpcUrl = config.rpc?.solana?.url;
-    if (rpcUrl) {
+    const rpcUrl = config.rpc?.solana?.url || 'https://api.devnet.solana.com';
+    {
       const res = await fetch(rpcUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
