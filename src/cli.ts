@@ -28,6 +28,7 @@ import {
   reset,
   show,
   pull,
+  findNitDir,
 } from './index.js';
 import type { AuthProvider } from './types.js';
 import { formatDiff } from './diff.js';
@@ -556,26 +557,58 @@ async function cmdWallet() {
   const agent = s.agentId;
   const network = 'devnet';
 
-  // Use plain strings for width calculation, add color after
-  const rows = [
+  // Try to fetch SOL balance from Solana RPC
+  let solBalance = '';
+  try {
+    const { readConfig: rc } = await import('./config.js');
+    const nitDir = findNitDir();
+    const config = await rc(nitDir);
+    const rpcUrl = config.rpc?.solana?.url;
+    if (rpcUrl) {
+      const res = await fetch(rpcUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0', id: 1, method: 'getBalance', params: [sol],
+        }),
+      });
+      const data = await res.json() as { result?: { value?: number } };
+      if (data.result?.value !== undefined) {
+        const lamports = data.result.value;
+        solBalance = (lamports / 1_000_000_000).toFixed(4) + ' SOL';
+      }
+    }
+  } catch { /* RPC not configured or unreachable — skip balance */ }
+
+  // Build card rows: [label, value, colorFn?]
+  type CardRow = [string, string, ((s: string) => string)?] | null;
+  const rows: CardRow[] = [
     ['Solana', sol],
     ['EVM', evm],
     null,
     ['Agent', agent],
-    ['Network', network],
+    ['Network', network, green],
   ];
+  if (solBalance) {
+    rows.splice(2, 0, ['Balance', solBalance, green]);
+  }
 
+  printCard(rows);
+}
+
+function printCard(rows: ([string, string, ((s: string) => string)?] | null)[]) {
   const labelW = 10;
   const contentLines: string[] = [];
   const plainLines: string[] = [];
+
   for (const row of rows) {
     if (!row) {
       contentLines.push('');
       plainLines.push('');
     } else {
       const plain = `  ${row[0].padEnd(labelW)}${row[1]}`;
-      const display = row[0] === 'Network'
-        ? `  ${row[0].padEnd(labelW)}${green(row[1])}`
+      const display = row[2]
+        ? `  ${row[0].padEnd(labelW)}${row[2](row[1])}`
         : plain;
       contentLines.push(display);
       plainLines.push(plain);
