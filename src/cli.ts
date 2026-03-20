@@ -90,6 +90,9 @@ async function main() {
       case 'auth':
         await cmdAuth(args);
         break;
+      case 'wallet':
+        await cmdWallet();
+        break;
       case 'reset':
         await cmdReset(args);
         break;
@@ -540,6 +543,58 @@ async function cmdAuth(args: string[]) {
   console.error('Usage: nit auth set <domain> --provider <google|github|x> --account <email>');
   console.error('       nit auth show [domain]');
   process.exit(1);
+}
+
+// ---------------------------------------------------------------------------
+// Wallet card display
+// ---------------------------------------------------------------------------
+
+async function cmdWallet() {
+  const s = await status();
+  const sol = s.walletAddresses.solana;
+  const evm = s.walletAddresses.ethereum;
+  const agent = s.agentId;
+  const network = 'devnet';
+
+  // Use plain strings for width calculation, add color after
+  const rows = [
+    ['Solana', sol],
+    ['EVM', evm],
+    null,
+    ['Agent', agent],
+    ['Network', network],
+  ];
+
+  const labelW = 10;
+  const contentLines: string[] = [];
+  const plainLines: string[] = [];
+  for (const row of rows) {
+    if (!row) {
+      contentLines.push('');
+      plainLines.push('');
+    } else {
+      const plain = `  ${row[0].padEnd(labelW)}${row[1]}`;
+      const display = row[0] === 'Network'
+        ? `  ${row[0].padEnd(labelW)}${green(row[1])}`
+        : plain;
+      contentLines.push(display);
+      plainLines.push(plain);
+    }
+  }
+
+  const maxLen = Math.max(...plainLines.map(l => l.length));
+  const w = maxLen + 2;
+
+  console.log();
+  console.log(`  \u250c${'─'.repeat(w)}\u2510`);
+  console.log(`  \u2502${''.padEnd(w)}\u2502`);
+  for (let i = 0; i < contentLines.length; i++) {
+    const pad = w - plainLines[i].length;
+    console.log(`  \u2502${contentLines[i]}${' '.repeat(pad)}\u2502`);
+  }
+  console.log(`  \u2502${''.padEnd(w)}\u2502`);
+  console.log(`  \u2514${'─'.repeat(w)}\u2518`);
+  console.log();
 }
 
 // ---------------------------------------------------------------------------
