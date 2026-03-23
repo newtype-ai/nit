@@ -115,7 +115,7 @@ export async function autoUpdate(): Promise<void> {
   if (!update) return;
 
   const { current, latest } = update;
-  process.stderr.write(`nit: updating ${current} → ${latest}...\n`);
+  process.stderr.write(`nit: updating ${current} → ${latest} — https://github.com/newtype-ai/nit/releases/tag/v${latest}\n`);
 
   try {
     execSync('npm install -g @newtype-ai/nit@latest', {
