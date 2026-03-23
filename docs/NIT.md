@@ -60,7 +60,7 @@ Apps won't adopt this because someone pitches them a protocol. They'll adopt it 
 |-----------|----------|---------------|
 | CLI + data model | `github.com/newtype-ai/nit` (standalone repo) | Local store, commits, branches, push client |
 | Server protocol | `apps/agent-cards/src/api/` (this repo) | KV storage, auth verification, card serving |
-| SDK | `github.com/newtype-ai/newtype-ai` (standalone repo) | High-level API for apps adopting nit |
+| SDK | `github.com/newtype-ai/nit-sdk` (standalone repo) | High-level API for apps adopting nit |
 
 ---
 
@@ -470,7 +470,7 @@ Server-side branch data is stored in Cloudflare KV (`AGENT_BRANCHES` namespace):
 |-----------|----------|---------|
 | CLI + data model | `github.com/newtype-ai/nit` | `@newtype-ai/nit` on npm |
 | Server protocol | `apps/agent-cards/src/api/` (this repo) | Part of `newtype-agent-cards` worker |
-| SDK | `github.com/newtype-ai/newtype-ai` | `@newtype-ai/sdk` on npm |
+| SDK | `github.com/newtype-ai/nit-sdk` | `@newtype-ai/nit-sdk` on npm |
 
 **Server files in this repo:**
 
