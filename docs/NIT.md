@@ -76,16 +76,16 @@ An agent's identity is an **Ed25519 keypair**:
 
 The agent-card URL (`agent-{uuid}.newtype-ai.org`) is a fingerprint of the public key. Identity is self-sovereign — created by `nit init`, not by any app.
 
-### Wallet Addresses
+### Chain Addresses
 
-nit derives blockchain wallet addresses deterministically from the Ed25519 keypair:
+nit derives chain-native addresses deterministically from the Ed25519 keypair:
 
 - **Solana** — `base58(ed25519_pubkey)` (Ed25519 is Solana's native curve)
 - **EVM** (Ethereum, BSC, Polygon, etc.) — a secp256k1 key is derived via `HMAC-SHA512("secp256k1", ed25519_seed)[0:32]`, then the address is `keccak256(pubkey)[last 20 bytes]`
 
 Both addresses are shown in `nit init` and `nit status`. No additional keys are stored — secp256k1 is derived on the fly from the existing Ed25519 seed.
 
-Agents can sign and broadcast transactions from these wallets. nit provides minimal primitives — the agent constructs the transaction, nit signs it and broadcasts to a configured RPC endpoint.
+Agents can sign and submit payloads to chain RPC endpoints. nit provides minimal signing primitives — the agent constructs the payload, nit signs it.
 
 Programmatic access:
 - `getSolanaAddress(nitDir)` → base58 Solana address
@@ -179,7 +179,26 @@ Non-main branches cannot use TOFU. The agent must push `main` first to register 
 
 ### Read Auth (Non-Main Branches)
 
-Main branch cards are **public** — anyone can fetch them with no authentication. Non-main branches use **stateless challenge-response** authentication:
+Main branch cards are **public** — anyone can fetch them with no authentication. Non-main branches require one of two auth methods (checked in this order):
+
+**1. Read token (apps use this):**
+
+Apps receive a read token from `POST /agent-card/verify` when verifying an agent's login. The token is HMAC-signed, stateless, scoped to one agent + one domain, and valid for 30 days.
+
+```
+GET /.well-known/agent-card.json?branch=faam.io
+Authorization: Bearer <read_token>
+```
+
+Token format: `{base64url(payload)}.{base64url(hmac-sha256)}`
+Token payload: `{ sub: agent_id, dom: domain, exp: unix_timestamp, jti: nonce }`
+
+- **Scoped:** a token for `faam.io` cannot read `discord.com`
+- **Stateless:** server verifies HMAC, no KV lookup
+- **30-day expiry:** agent must re-login to refresh
+- **Revocable by deletion:** deleting the branch returns 404 even with a valid token
+
+**2. Challenge-response (agents use this via `nit pull`):**
 
 1. Client requests `/.well-known/agent-card.json?branch=faam.io` → server returns `401` with `{ challenge, expires }`
 2. Challenge token format: `{base64(payload)}.{base64(hmac)}` — server-signed via HMAC, no KV write needed
@@ -201,7 +220,7 @@ App verifies (pick one):
 
   LOCAL:  fetch public card → read publicKey → ed25519.verify(message, signature, publicKey)
   SERVER: POST api.newtype-ai.org/agent-card/verify { agent_id, domain, timestamp, signature }
-          → { verified: true, card: { name, skills, ... } }
+          → { verified: true, card: {...}, branch, readToken, solanaAddress }
 ```
 
 **Canonical signed message for app login:**
@@ -276,11 +295,16 @@ Remove a branch. Cannot delete `main`.
 
 ### `GET /.well-known/agent-card.json`
 
-Served at `agent-{uuid}.newtype-ai.org`. Public read for main branch, challenge-response auth for others.
+Served at `agent-{uuid}.newtype-ai.org`. Public read for main branch, authenticated for others.
 
 **Query params:**
 - `?branch=main` (default) — returns main branch card, no auth needed
-- `?branch=faam.io` — returns 401 with challenge if no signature, or the card if authenticated
+- `?branch=faam.io` — requires auth (read token or challenge-response)
+
+**Authentication for non-main branches (in priority order):**
+1. `Authorization: Bearer <read_token>` — HMAC-signed token from `/agent-card/verify` (apps use this)
+2. `X-Nit-Signature` + `X-Nit-Challenge` — challenge-response (agents use this via `nit pull`)
+3. No auth → returns `401` with challenge
 
 **Response headers:**
 - `X-Agent-Card-Status`: `nit` (pushed via nit) or `configured` (legacy Supabase) or `minimal`
@@ -290,7 +314,7 @@ Served at `agent-{uuid}.newtype-ai.org`. Public read for main branch, challenge-
 
 ### `POST /agent-card/verify`
 
-Ownership verification endpoint. Apps POST the agent's signed login message; the server verifies the Ed25519 signature and returns the agent's card.
+Ownership verification endpoint. Apps POST the agent's signed login message; the server verifies the Ed25519 signature and returns the agent's domain-specific card + a read token for ongoing access.
 
 **Body:**
 ```json
@@ -308,9 +332,16 @@ Ownership verification endpoint. Apps POST the agent's signed login message; the
   "verified": true,
   "agent_id": "550e8400-...",
   "domain": "faam.io",
-  "card": { "name": "ResearchBot", "skills": [...], ... }
+  "card": { "name": "ResearchBot", "skills": [...], ... },
+  "branch": "faam.io",
+  "solanaAddress": "7Xf3kQ...",
+  "readToken": "eyJzdWIiOi..."
 }
 ```
+
+- `card` — the **domain branch card** if the agent has pushed a branch matching the domain; otherwise falls back to the `main` branch card
+- `branch` — which branch the card came from (`"faam.io"` or `"main"`)
+- `readToken` — HMAC-signed read token for fetching the domain branch card later (30-day expiry). Use with `Authorization: Bearer <token>` on `GET /.well-known/agent-card.json?branch=faam.io`
 
 **Error responses:**
 - `400` — malformed input (bad UUID, missing fields, invalid signature encoding)

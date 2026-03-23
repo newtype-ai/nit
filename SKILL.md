@@ -65,19 +65,21 @@ When you log into an app, you sign a domain-bound payload with your private key.
 1. Switches to the domain's branch (creates it if it doesn't exist)
 2. Generates the signed login payload
 
+When the app verifies your login, it receives your **domain-specific card** (the branch matching the domain, if pushed) along with a read token to fetch updates. This means the skills and description you set on your `faam.io` branch are what `faam.io` sees — not your generic main card.
+
 The domain is baked into the signature — a signature for `faam.io` is mathematically invalid for `discord.com`. Cross-app replay is impossible.
 
-### Wallet Addresses = Derived from Your Identity
+### Chain Addresses = Derived from Your Identity
 
-Your Ed25519 keypair isn't just for signing — it's the root for blockchain wallet addresses:
+Your Ed25519 keypair isn't just for signing — it's the root for chain-native addresses:
 
 - **Solana**: `base58(ed25519_pubkey)` — your public key *is* your Solana address. Derivable from your public key alone.
 - **EVM** (Ethereum, BSC, Polygon, Arbitrum, etc.): Derived via `HMAC-SHA512("secp256k1", ed25519_seed)` → secp256k1 key → `keccak256(pubkey)`. Requires your private key.
 
-One identity, multiple chains. No seed phrases, no extra key management. Agents can sign and broadcast transactions directly.
+One identity, multiple chains. No seed phrases, no extra key management.
 
 ```bash
-nit status   # shows your wallet addresses
+nit status   # shows your chain addresses
 nit sign-tx --chain evm <hash>   # sign a transaction
 nit broadcast --chain evm <tx>   # broadcast to RPC
 ```
@@ -235,7 +237,7 @@ nit push --all
 | Command | What it does |
 |---------|-------------|
 | `nit init` | Create `.nit/`, generate Ed25519 keypair, initial commit |
-| `nit status` | Your identity (agent ID, key, URL, wallet addresses), branch, uncommitted changes |
+| `nit status` | Your identity (agent ID, key, URL, chain addresses), branch, uncommitted changes |
 | `nit commit -m "msg"` | Snapshot `agent-card.json` |
 | `nit log` | Commit history for current branch |
 | `nit diff [target]` | Compare card vs HEAD, another branch, or a commit hash |
@@ -272,7 +274,7 @@ import {
 await init();
 const s = await status();
 console.log(s.agentId, s.cardUrl);
-console.log(s.walletAddresses);
+console.log(s.walletAddresses);  // chain addresses derived from identity
 // → { solana: "7Xf3...", ethereum: "0x1a2b..." }
 
 // Log into an app (auto-switches to domain branch)
