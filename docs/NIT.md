@@ -220,7 +220,7 @@ App verifies (pick one):
 
   LOCAL:  fetch public card → read publicKey → ed25519.verify(message, signature, publicKey)
   SERVER: POST api.newtype-ai.org/agent-card/verify { agent_id, domain, timestamp, signature }
-          → { verified: true, card: {...}, branch, readToken, solanaAddress }
+          → { verified: true, card: {...}, branch, readToken, wallet }
 ```
 
 **Canonical signed message for app login:**
@@ -334,7 +334,7 @@ Ownership verification endpoint. Apps POST the agent's signed login message; the
   "domain": "faam.io",
   "card": { "name": "ResearchBot", "skills": [...], ... },
   "branch": "faam.io",
-  "solanaAddress": "7Xf3kQ...",
+  "wallet": { "solana": "7Xf3kQ...", "evm": "0x1a2b..." },
   "readToken": "eyJzdWIiOi..."
 }
 ```

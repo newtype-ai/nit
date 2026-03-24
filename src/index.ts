@@ -296,6 +296,10 @@ export async function init(options?: {
     card.url = `https://agent-${agentId}.newtype-ai.org`;
   }
 
+  // Inject wallet addresses
+  const walletAddresses = await getWalletAddresses(nitDir);
+  card.wallet = { solana: walletAddresses.solana, evm: walletAddresses.ethereum };
+
   // Write agent-card.json
   await writeWorkingCard(nitDir, card);
 
@@ -330,9 +334,6 @@ export async function init(options?: {
 
   // Place nit's own SKILL.md in the skills directory
   const nitSkillPath = await createNitSkill(skillsDir);
-
-  // Derive wallet addresses
-  const walletAddresses = await getWalletAddresses(nitDir);
 
   return {
     agentId,
@@ -516,7 +517,11 @@ export async function commit(
   const pubBase64 = await loadPublicKey(nitDir);
   card.publicKey = formatPublicKeyField(pubBase64);
 
-  // Write the resolved card back (skills + publicKey may have updated)
+  // Enforce wallet addresses from identity
+  const walletAddrs = await getWalletAddresses(nitDir);
+  card.wallet = { solana: walletAddrs.solana, evm: walletAddrs.ethereum };
+
+  // Write the resolved card back (skills + publicKey + wallet may have updated)
   await writeWorkingCard(nitDir, card);
 
   const cardJson = JSON.stringify(card, null, 2);

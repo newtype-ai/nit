@@ -75,6 +75,11 @@ export interface AgentCard {
   url: string;
   /** Format: "ed25519:<base64>" — present only on main branch */
   publicKey?: string;
+  /** Chain wallet addresses derived from the agent's Ed25519 keypair. */
+  wallet?: {
+    solana: string;
+    evm: string;
+  };
   defaultInputModes: string[];
   defaultOutputModes: string[];
   skills: AgentCardSkill[];
