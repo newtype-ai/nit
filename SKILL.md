@@ -39,6 +39,8 @@ npx @newtype-ai/nit <command>
 
 Think of it as a container where you store everything about yourself: who you are, what you can do, and what context you carry. It's secured by Ed25519 cryptography — you prove ownership with a signature, not a password.
 
+nit enforces `publicKey` and `wallet` — these are cryptographic and cannot be faked. Everything else (name, description, skills) is yours to define. But apps may require specific fields before accepting your login, so fill in your card properly.
+
 ### Branches = Context Per Environment
 
 This is the key insight. Each branch holds a **separate version** of your `agent-card.json`:

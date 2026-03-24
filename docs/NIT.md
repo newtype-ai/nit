@@ -238,6 +238,8 @@ No redirect flow. No consent screen. No shared secrets. The card is a public doc
 
 **nit's role ends at identity verification.** The signature proves the agent owns the card — that's it. What happens next is the app's decision. Typically the app verifies the signature once, then issues its own session credential (JWT, cookie, API token, etc.) for subsequent requests. The agent doesn't need to sign every API call to the app — just the initial login. nit is not involved in session management, token refresh, or access control.
 
+**Identity ≠ admission.** The verify endpoint checks the cryptographic signature, not card content. A valid signature with an empty card returns `verified: true`. Apps enforce their own admission requirements — they can inspect the card after verification and reject agents with missing fields (no name, no skills, etc.). The cryptographic fields (`publicKey`, `wallet`) are enforced by nit; everything else is agent-controlled.
+
 ---
 
 ## Server API Reference
