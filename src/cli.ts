@@ -136,13 +136,13 @@ async function main() {
 async function cmdInit() {
   const result = await init();
 
-  console.log(bold('Initialized nit repository'));
+  console.log(bold('Initialized nit workspace'));
   console.log();
   console.log(`  Agent ID:    ${green(result.agentId)}`);
   console.log(`  Public key:  ${dim(result.publicKey)}`);
   console.log(`  Card URL:    ${result.cardUrl}`);
   console.log();
-  console.log(`  ${bold('Wallet addresses:')}`);
+  console.log(`  ${bold('Chain addresses:')}`);
   console.log(`    Solana:    ${result.walletAddresses.solana}`);
   console.log(`    Ethereum:  ${result.walletAddresses.ethereum}`);
   console.log();
@@ -170,7 +170,7 @@ async function cmdStatus() {
   console.log(`  Public key:  ${dim(s.publicKey)}`);
   console.log(`  Card URL:    ${s.cardUrl}`);
   console.log();
-  console.log(`  ${bold('Wallet addresses:')}`);
+  console.log(`  ${bold('Chain addresses:')}`);
   console.log(`    Solana:    ${s.walletAddresses.solana}`);
   console.log(`    Ethereum:  ${s.walletAddresses.ethereum}`);
   console.log();
@@ -547,7 +547,7 @@ async function cmdAuth(args: string[]) {
 }
 
 // ---------------------------------------------------------------------------
-// Wallet card display
+// Chain address card display
 // ---------------------------------------------------------------------------
 
 async function cmdWallet() {

@@ -118,30 +118,19 @@ const DEFAULT_API_BASE = 'https://api.newtype-ai.org';
 // ---------------------------------------------------------------------------
 
 /**
- * Walk up from startDir looking for a .nit/ directory.
- * Returns the path to .nit/ or throws if not found.
+ * Find .nit/ in the given directory (or cwd).
+ * Identity is explicit — no upward directory walking.
  */
 export function findNitDir(startDir?: string): string {
-  let dir = resolve(startDir || process.cwd());
-
-  while (true) {
-    const candidate = join(dir, NIT_DIR);
-    try {
-      // Synchronous check — this is a startup utility
-      const s = statSync(candidate);
-      if (s.isDirectory()) return candidate;
-    } catch {
-      // Not found, try parent
-    }
-
-    const parent = resolve(dir, '..');
-    if (parent === dir) {
-      throw new Error(
-        'Not a nit repository (or any parent directory). Run `nit init` first.',
-      );
-    }
-    dir = parent;
+  const dir = resolve(startDir || process.cwd());
+  const candidate = join(dir, NIT_DIR);
+  try {
+    const s = statSync(candidate);
+    if (s.isDirectory()) return candidate;
+  } catch {
+    // Not found
   }
+  throw new Error('Not a nit workspace. Run `nit init` first.');
 }
 
 /**
@@ -223,7 +212,7 @@ export interface InitResult {
 }
 
 /**
- * Initialize a new nit repository in the project directory.
+ * Initialize a new nit workspace in the project directory.
  *
  * 1. Create .nit/ directory structure
  * 2. Generate Ed25519 keypair

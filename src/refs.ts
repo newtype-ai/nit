@@ -38,7 +38,7 @@ export async function resolveHead(nitDir: string): Promise<string> {
     return (await fs.readFile(refPath, 'utf-8')).trim();
   } catch {
     throw new Error(
-      `Branch ref ${head.ref} does not exist. Repository may be empty.`,
+      `Branch ref ${head.ref} does not exist. Workspace may be empty.`,
     );
   }
 }

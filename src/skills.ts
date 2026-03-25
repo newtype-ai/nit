@@ -46,7 +46,7 @@ const GLOBAL_SKILLS_DIRS = [
 ];
 
 /**
- * Detect the skills directory for this nit repository.
+ * Detect the skills directory for this nit workspace.
  *
  * Detection layers:
  *   1. Path-based: nit repo's own path reveals the framework
