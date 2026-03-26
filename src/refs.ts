@@ -109,6 +109,29 @@ export async function listBranches(nitDir: string): Promise<NitBranch[]> {
 }
 
 /**
+ * Delete a local branch ref.
+ */
+export async function deleteBranch(nitDir: string, branch: string): Promise<void> {
+  const refPath = join(nitDir, 'refs', 'heads', branch);
+  await fs.unlink(refPath);
+}
+
+/**
+ * Delete a remote-tracking ref.
+ */
+export async function deleteRemoteRef(
+  nitDir: string,
+  remote: string,
+  branch: string,
+): Promise<void> {
+  try {
+    await fs.unlink(join(nitDir, 'refs', 'remote', remote, branch));
+  } catch {
+    // May not exist
+  }
+}
+
+/**
  * Point HEAD at the given branch (symbolic ref).
  */
 export async function setHead(nitDir: string, branch: string): Promise<void> {

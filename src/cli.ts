@@ -12,6 +12,7 @@ import {
   log,
   diff,
   branch,
+  branchDelete,
   checkout,
   push,
   remote,
@@ -246,7 +247,28 @@ async function cmdDiff(args: string[]) {
 }
 
 async function cmdBranch(args: string[]) {
+  // nit branch -d <name>  → delete local branch
+  // nit branch -D <name>  → delete local + remote branch
+  if (args[0] === '-d' || args[0] === '-D') {
+    const name = args[1];
+    if (!name) {
+      console.error(`Usage: nit branch ${args[0]} <name>`);
+      process.exit(1);
+    }
+    const deleteRemote = args[0] === '-D';
+    await branchDelete(name, { remote: deleteRemote });
+    console.log(`Deleted branch '${name}'${deleteRemote ? ' (local + remote)' : ''}`);
+    return;
+  }
+
+  // Reject flags that aren't branch names
   const name = args[0];
+  if (name?.startsWith('-')) {
+    console.error(`Unknown flag: ${name}`);
+    console.error('Usage: nit branch [name] | nit branch -d <name> | nit branch -D <name>');
+    process.exit(1);
+  }
+
   const branches = await branch(name);
 
   if (name) {
@@ -668,6 +690,8 @@ ${bold('Commands:')}
   log                Show commit history
   diff [target]      Compare card vs HEAD, branch, or commit
   branch [name]      List branches or create a new one
+  branch -d <name>   Delete a local branch
+  branch -D <name>   Delete local + remote branch
   checkout <branch>  Switch branch (overwrites agent-card.json)
   push [--all]       Push branch(es) to remote
   pull [--all]       Pull branch(es) from remote

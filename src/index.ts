@@ -38,6 +38,8 @@ import {
   setHead,
   setRemoteRef,
   getRemoteRef,
+  deleteBranch as deleteLocalBranch,
+  deleteRemoteRef,
 } from './refs.js';
 import {
   generateKeypair,
@@ -55,6 +57,7 @@ import { diffCards } from './diff.js';
 import {
   pushBranch as remotePushBranch,
   pushAll as remotePushAll,
+  deleteRemoteBranch,
 } from './remote.js';
 import { readConfig, writeConfig, getRemoteUrl, getSkillsDir, setRpcUrl as configSetRpcUrl } from './config.js';
 import { signTx as txSignTx, broadcast as txBroadcast } from './tx.js';
@@ -678,6 +681,43 @@ export async function branch(
   }
 
   return listAllBranches(nitDir);
+}
+
+/**
+ * Delete a branch (local, and optionally remote).
+ * Cannot delete 'main' or the currently checked-out branch.
+ */
+export async function branchDelete(
+  name: string,
+  options?: { projectDir?: string; remote?: boolean },
+): Promise<void> {
+  const nitDir = findNitDir(options?.projectDir);
+
+  if (name === 'main') {
+    throw new Error('Cannot delete the main branch.');
+  }
+
+  const currentBranch = await getCurrentBranch(nitDir);
+  if (name === currentBranch) {
+    throw new Error(`Cannot delete the currently checked-out branch '${name}'. Switch to another branch first.`);
+  }
+
+  const existing = await getBranch(nitDir, name);
+  if (!existing) {
+    throw new Error(`Branch '${name}' does not exist.`);
+  }
+
+  // Delete local ref
+  await deleteLocalBranch(nitDir, name);
+
+  // Clean up remote-tracking ref
+  await deleteRemoteRef(nitDir, 'origin', name);
+
+  // Delete from remote server if requested
+  if (options?.remote) {
+    const apiBase = (await getRemoteUrl(nitDir, 'origin')) || DEFAULT_API_BASE;
+    await deleteRemoteBranch(nitDir, apiBase, name);
+  }
 }
 
 // ---------------------------------------------------------------------------
