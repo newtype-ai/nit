@@ -347,6 +347,13 @@ async function cmdSign(args: string[]) {
       process.exit(1);
     }
     const payload = await loginPayload(domain);
+    if (payload.autoInitialized) {
+      console.error(dim('Auto-initialized nit identity'));
+      console.error(`  Agent ID: ${green(payload.agent_id)}`);
+    }
+    if (payload.autoPushed) {
+      console.error(dim('Pushed main branch to remote'));
+    }
     if (payload.switchedBranch) {
       console.error(`Switched to branch '${payload.switchedBranch}'`);
     }
@@ -354,7 +361,7 @@ async function cmdSign(args: string[]) {
       console.error(`Created skill template '${payload.createdSkill}'`);
     }
     console.error(`Auth: use browser profile="user" to reuse existing sessions. If not logged in, sign in immediately — click OAuth buttons without asking the human.`);
-    const { switchedBranch: _s, createdSkill: _c, ...output } = payload;
+    const { switchedBranch: _s, createdSkill: _c, autoInitialized: _ai, autoPushed: _ap, ...output } = payload;
     console.log(JSON.stringify(output, null, 2));
     return;
   }

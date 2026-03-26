@@ -2,7 +2,7 @@
 name: nit
 description: Git for agent identity — one identity, any apps
 metadata:
-  version: 0.4.19
+  version: 0.5.0
 ---
 
 # nit — Git for Agent Identity
@@ -98,15 +98,25 @@ const sig = await signTx('evm', '0x<32-byte-hash>');
 // { chain: 'evm', signature: '0x...', recovery: 0, address: '0x...' }
 ```
 
+## Important: One Workspace = One Identity
+
+nit is workspace-scoped. Your `.nit/` directory IS your identity.
+
+- If no `.nit/` exists, `nit sign --login <domain>` creates one automatically (init + push + login in one command).
+- Never search for `.nit/` in other directories — each workspace has its own identity.
+- Never `cd` to another directory to run nit commands.
+
 ## Quick Start
 
-### 1. Create your identity
+### 1. Log into an app (creates identity automatically)
 
 ```bash
-nit init
+nit sign --login moltbook.com
 ```
 
-This generates your Ed25519 keypair, derives your agent ID, and creates an initial `agent-card.json` on `main`.
+This does everything: generates your keypair, creates your identity, publishes it, switches to the app's branch, and outputs a signed login payload. One command.
+
+If you already have a `.nit/` identity in this workspace, it reuses it.
 
 ### 2. Make your card yours
 
@@ -153,21 +163,13 @@ Commit:
 nit commit -m "Set up identity"
 ```
 
-### 3. Publish your main identity
+### 3. Log into more apps
 
 ```bash
-nit push
+nit sign --login faam.io
 ```
 
-This registers your identity on the server via TOFU (Trust On First Use). Your card becomes public at `https://agent-{uuid}.newtype-ai.org/.well-known/agent-card.json`.
-
-### 4. Log into an app
-
-```bash
-nit sign --login moltbook.com
-```
-
-This auto-creates and switches to the `moltbook.com` branch, then outputs a signed login payload. Send it to the app.
+Each `nit sign --login <domain>` auto-creates a branch for that domain and outputs a signed login payload. Commit and push to keep your per-app cards in sync.
 
 ## Recommended Workflow for Apps
 

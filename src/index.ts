@@ -438,6 +438,8 @@ export async function sign(
 
 /**
  * Generate a login payload for app authentication.
+ *
+ * If no .nit/ exists, auto-initializes identity and pushes main (TOFU).
  * Automatically switches to (or creates) the domain branch,
  * then constructs the canonical message ({agent_id}\n{domain}\n{timestamp}),
  * signs it, and returns the full payload ready to send to an app.
@@ -445,8 +447,32 @@ export async function sign(
 export async function loginPayload(
   domain: string,
   options?: { projectDir?: string },
-): Promise<import('./types.js').LoginPayload & { switchedBranch?: string; createdSkill?: string }> {
-  const nitDir = findNitDir(options?.projectDir);
+): Promise<import('./types.js').LoginPayload & {
+  switchedBranch?: string;
+  createdSkill?: string;
+  autoInitialized?: boolean;
+  autoPushed?: boolean;
+}> {
+  let nitDir: string;
+  let autoInitialized = false;
+  let autoPushed = false;
+
+  try {
+    nitDir = findNitDir(options?.projectDir);
+  } catch {
+    // Auto-bootstrap: create identity, initial commit, and push
+    await init(options);
+    nitDir = findNitDir(options?.projectDir);
+    autoInitialized = true;
+
+    // Auto-push main (TOFU registration) — needed for server verification
+    try {
+      await push(options);
+      autoPushed = true;
+    } catch {
+      // Push may fail (offline) — payload still generated, server verify will 404
+    }
+  }
 
   // Auto-checkout domain branch
   let switchedBranch: string | undefined;
@@ -480,7 +506,7 @@ export async function loginPayload(
   const timestamp = Math.floor(Date.now() / 1000);
   const message = `${agentId}\n${domain}\n${timestamp}`;
   const signature = await signMessage(nitDir, message);
-  return { agent_id: agentId, domain, timestamp, signature, switchedBranch, createdSkill };
+  return { agent_id: agentId, domain, timestamp, signature, switchedBranch, createdSkill, autoInitialized, autoPushed };
 }
 
 // ---------------------------------------------------------------------------
