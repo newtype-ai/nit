@@ -133,10 +133,24 @@ async function main() {
 // Command implementations
 // ---------------------------------------------------------------------------
 
+declare const __NIT_INSTALL_COUNT__: number;
+
 async function cmdInit() {
   const result = await init();
 
-  console.log(bold('Initialized nit workspace'));
+  console.log();
+  console.log(dim('  _   _                 _____'));
+  console.log(dim(' | \\ |"|       ___     |_ " _|'));
+  console.log(dim('<|  \\| |>     |_"_|      | |'));
+  console.log(dim('U| |\\  |u      | |      /| |\\'));
+  console.log(dim(' |_| \\_|     U/| |\\u   u |_|U'));
+  console.log(dim(' ||   \\\\,-.-,_|___|_,-._// \\\\_'));
+  console.log(dim(' (_")  (_/ \\_)-\' \'-(_/(__) (__)'));
+  console.log();
+  const count = typeof __NIT_INSTALL_COUNT__ === 'number' && __NIT_INSTALL_COUNT__ > 0
+    ? `the ~${__NIT_INSTALL_COUNT__.toLocaleString()}th`
+    : 'a new';
+  console.log(bold(`welcome ${count} nit!`));
   console.log();
   console.log(`  Agent ID:    ${green(result.agentId)}`);
   console.log(`  Public key:  ${dim(result.publicKey)}`);
