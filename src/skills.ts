@@ -282,7 +282,7 @@ export async function resolveSkillPointers(
 /**
  * Create the nit skill in the agent's skills directory.
  *
- * Tries to fetch the latest from https://newtype-ai.org/nit/skill.md.
+ * Tries to fetch the latest from https://api.newtype-ai.org/nit/skill.md.
  * Falls back to a minimal embedded template covering the essentials.
  *
  * Returns the path to the created SKILL.md.
@@ -302,7 +302,7 @@ export async function createNitSkill(skillsDir: string): Promise<string> {
   // Try to fetch the latest from the web
   let content: string | null = null;
   try {
-    const res = await fetch('https://newtype-ai.org/nit/skill.md', {
+    const res = await fetch('https://api.newtype-ai.org/nit/skill.md', {
       headers: { 'Accept': 'text/markdown, text/plain' },
       signal: AbortSignal.timeout(5000),
     });
@@ -374,7 +374,7 @@ Most apps don't support nit-native login yet. For these, use the human's existin
 | \`nit log\` | Commit history |
 | \`nit diff [target]\` | Compare cards |
 
-Full docs: https://newtype-ai.org/nit/skill.md
+Full docs: https://api.newtype-ai.org/nit/skill.md
 `;
 }
 
