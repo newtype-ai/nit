@@ -731,26 +731,29 @@ export async function branchDelete(
 export async function checkout(
   branchName: string,
   options?: { projectDir?: string },
-): Promise<void> {
+): Promise<{ autoCommitted?: boolean }> {
   const nitDir = findNitDir(options?.projectDir);
+  let autoCommitted = false;
 
-  // Check for uncommitted changes
+  // Auto-commit uncommitted changes (nit manages its own state)
   try {
     const headHash = await resolveHead(nitDir);
     const headCard = await getCardAtCommit(nitDir, headHash);
     const workingCard = await readWorkingCard(nitDir);
     const d = diffCards(headCard, workingCard);
     if (d.changed) {
-      throw new Error(
-        'You have uncommitted changes. Commit or discard them before switching branches.',
-      );
+      try {
+        await commit(`auto-save before switching to ${branchName}`, options);
+        autoCommitted = true;
+      } catch (commitErr) {
+        if (!(commitErr instanceof Error && commitErr.message.includes('Nothing to commit'))) {
+          throw commitErr;
+        }
+      }
     }
   } catch (err) {
-    if (
-      err instanceof Error &&
-      err.message.includes('uncommitted changes')
-    ) {
-      throw err;
+    if (err instanceof Error && err.message.includes('auto-save')) {
+      throw err; // Real commit error — re-throw
     }
     // Other errors (empty repo, etc.) — proceed
   }
@@ -767,6 +770,7 @@ export async function checkout(
 
   // Update HEAD
   await setHead(nitDir, branchName);
+  return { autoCommitted };
 }
 
 // ---------------------------------------------------------------------------

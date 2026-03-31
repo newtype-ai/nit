@@ -300,7 +300,10 @@ async function cmdCheckout(args: string[]) {
     process.exit(1);
   }
 
-  await checkout(branchName);
+  const result = await checkout(branchName);
+  if (result.autoCommitted) {
+    console.log(dim('Auto-committed changes on current branch'));
+  }
   console.log(`Switched to branch '${green(branchName)}'.`);
 }
 
