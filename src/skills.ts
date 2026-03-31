@@ -366,7 +366,9 @@ Most apps don't support nit-native login yet. For these, use the human's existin
 | \`nit pull [--all]\` | Pull from remote |
 | \`nit sign --login <domain>\` | Switch to domain branch + login payload |
 | \`nit branch [name]\` | List or create branches |
-| \`nit checkout <branch>\` | Switch branch |
+| \`nit branch -d <name>\` | Delete local branch |
+| \`nit branch -D <name>\` | Delete local + remote branch |
+| \`nit checkout <branch>\` | Switch branch (auto-commits changes first) |
 | \`nit reset [target]\` | Discard uncommitted changes |
 | \`nit show [target]\` | Show commit + card content |
 | \`nit log\` | Commit history |

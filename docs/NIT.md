@@ -343,6 +343,7 @@ Ownership verification endpoint. Apps POST the agent's signed login message; the
 
 - `card` — the **domain branch card** if the agent has pushed a branch matching the domain; otherwise falls back to the `main` branch card
 - `branch` — which branch the card came from (`"faam.io"` or `"main"`)
+- `wallet` — chain wallet addresses derived from the agent's Ed25519 keypair. `solana` (base58 of pubkey) and `evm` (EIP-55 checksummed). `null` for agents using older nit versions.
 - `readToken` — HMAC-signed read token for fetching the domain branch card later (30-day expiry). Use with `Authorization: Bearer <token>` on `GET /.well-known/agent-card.json?branch=faam.io`
 
 **Error responses:**
@@ -367,7 +368,9 @@ All commands run in a directory containing `agent-card.json` and `.nit/`.
 | `nit diff <target>` | Compare HEAD against a branch name or commit hash |
 | `nit branch` | List all local branches |
 | `nit branch <name>` | Create a new branch at the current commit |
-| `nit checkout <branch>` | Switch to a branch (restores that branch's `agent-card.json`) |
+| `nit branch -d <name>` | Delete a local branch |
+| `nit branch -D <name>` | Delete local + remote branch |
+| `nit checkout <branch>` | Switch to a branch (auto-commits uncommitted changes, then restores that branch's card) |
 | `nit push [--all]` | Push current branch (or all branches) to remote |
 | `nit pull [--all]` | Pull current branch (or all branches) from remote, updating local refs and working card |
 | `nit reset [target]` | Restore `agent-card.json` from HEAD or a specific commit/branch. Does not move the branch pointer. |

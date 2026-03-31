@@ -65,18 +65,17 @@ polymarket.com    → { skills: [research, trading], description: "Market analys
 
 Data in one branch never pollutes another. Switch environments cleanly.
 
-### Built-in crypto wallets
+### On-chain identity
 
-One keypair, multiple chains. No seed phrases, no extra key management.
+One keypair, multiple chains. Your Ed25519 identity derives chain-native addresses — no seed phrases, no extra key management.
 
 - **Solana** — your Ed25519 public key *is* your Solana address
-- **EVM** (Ethereum, BSC, Polygon, Arbitrum, etc.) — deterministic secp256k1 derivation from your Ed25519 seed
-- **Sign & broadcast** — sign transactions and send them to any RPC endpoint
+- **EVM** (Ethereum, BSC, Polygon, Arbitrum, etc.) — deterministic secp256k1 derivation from your Ed25519 identity
+
+Agents prove identity and sign on any chain using the same cryptographic root.
 
 ```bash
-nit status   # shows your wallet addresses
-nit sign-tx --chain evm <hash>   # sign a transaction
-nit broadcast --chain evm <tx>   # broadcast to RPC
+nit status   # shows your chain addresses
 ```
 
 ### Skill resolution
@@ -107,12 +106,14 @@ Pure Node.js builtins. No bloat.
 | Command | Description |
 |---------|-------------|
 | `nit init` | Create `.nit/`, generate Ed25519 keypair, initial commit |
-| `nit status` | Identity info, current branch, wallet addresses, uncommitted changes |
+| `nit status` | Identity info, current branch, chain addresses, uncommitted changes |
 | `nit commit -m "msg"` | Snapshot agent-card.json |
 | `nit log` | Commit history for current branch |
 | `nit diff [target]` | JSON diff vs HEAD, branch, or commit |
 | `nit branch [name]` | List branches or create a new one |
-| `nit checkout <branch>` | Switch branch (overwrites agent-card.json) |
+| `nit branch -d <name>` | Delete a local branch |
+| `nit branch -D <name>` | Delete local + remote branch |
+| `nit checkout <branch>` | Switch branch (auto-commits changes first) |
 | `nit push [--all]` | Push branch(es) to remote |
 | `nit pull [--all]` | Pull branch(es) from remote |
 | `nit reset [target]` | Restore agent-card.json from HEAD or target |
@@ -145,7 +146,7 @@ Platforms verify your identity by challenging you to sign a nonce — no shared 
 
 `publicKey` is managed by nit automatically — injected from your keypair at every commit. You don't need to set or modify it.
 
-nit also derives blockchain wallet addresses from your keypair — Solana (Ed25519 native) and EVM chains (Ethereum, BSC, Polygon, etc.) via a deterministic secp256k1 derivation. Run `nit status` to see your addresses.
+nit also derives chain-native addresses from your keypair — Solana (Ed25519 native) and EVM chains (Ethereum, BSC, Polygon, etc.) via a deterministic secp256k1 derivation. Run `nit status` to see your addresses.
 
 ### Login
 
@@ -191,7 +192,7 @@ your-project/
 ```typescript
 import {
   init, commit, checkout, branch, push, status, sign, loginPayload,
-  loadRawKeyPair, getWalletAddresses, signTx, broadcast, rpcSetUrl,
+  loadRawKeyPair, getWalletAddresses, signTx, rpcSetUrl,
   authSet, authShow, reset, show, pull,
 } from '@newtype-ai/nit';
 
@@ -209,16 +210,14 @@ await push({ all: true });
 const keypair = await loadRawKeyPair('/path/to/.nit');
 // → Uint8Array(64) — compatible with Solana and other Ed25519 libraries
 
-// Get blockchain wallet addresses (derived from your identity)
+// Get chain addresses (derived from your identity)
 const addresses = await getWalletAddresses('/path/to/.nit');
 // → { solana: "C54kvW3...", ethereum: "0x2317..." }
 
-// Sign and broadcast transactions
+// Sign data with identity-derived keys
 await rpcSetUrl('evm', 'https://eth.llamarpc.com');
 const sig = await signTx('evm', '0x<32-byte-keccak256-hash>');
 // → { chain: 'evm', signature: '0x...', recovery: 0, address: '0x...' }
-await broadcast('evm', '0x<signed-tx-hex>');
-// → { chain: 'evm', txHash: '0x...', rpcUrl: 'https://...' }
 ```
 
 ## License

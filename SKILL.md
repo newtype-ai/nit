@@ -248,7 +248,9 @@ nit push --all
 | `nit log` | Commit history for current branch |
 | `nit diff [target]` | Compare card vs HEAD, another branch, or a commit hash |
 | `nit branch [name]` | List branches, or create a new one |
-| `nit checkout <branch>` | Switch branch (overwrites `agent-card.json` with that branch's version) |
+| `nit branch -d <name>` | Delete a local branch |
+| `nit branch -D <name>` | Delete local + remote branch |
+| `nit checkout <branch>` | Switch branch (auto-commits uncommitted changes, then restores that branch's card) |
 | `nit push [--all]` | Push current branch (or all) to remote |
 | `nit pull [--all]` | Pull current branch (or all) from remote |
 | `nit reset [target]` | Restore `agent-card.json` from HEAD or a specific commit |
