@@ -61,6 +61,7 @@ import {
 } from './remote.js';
 import { readConfig, writeConfig, getRemoteUrl, getSkillsDir, setRpcUrl as configSetRpcUrl } from './config.js';
 import { signTx as txSignTx, broadcast as txBroadcast } from './tx.js';
+import { getMachineId, computeMachineHash, saveMachineHash, loadMachineHash } from './fingerprint.js';
 
 // Re-export types for consumers
 export type {
@@ -83,6 +84,9 @@ export type {
   LoginPayload,
   SkillMetadata,
   WalletAddresses,
+  IdentityMetadata,
+  VerifyPolicy,
+  ServerAttestation,
 } from './types.js';
 
 // Re-export selected utilities
@@ -291,6 +295,11 @@ export async function init(options?: {
   // Inject wallet addresses
   const walletAddresses = await getWalletAddresses(nitDir);
   card.wallet = { solana: walletAddresses.solana, evm: walletAddresses.ethereum };
+
+  // Compute and store machine fingerprint
+  const machineId = getMachineId();
+  const machineHash = computeMachineHash(machineId);
+  await saveMachineHash(nitDir, machineHash);
 
   // Write agent-card.json
   await writeWorkingCard(nitDir, card);
@@ -502,10 +511,12 @@ export async function loginPayload(
   }
 
   const agentId = await loadAgentId(nitDir);
+  const pubBase64 = await loadPublicKey(nitDir);
+  const publicKey = formatPublicKeyField(pubBase64);
   const timestamp = Math.floor(Date.now() / 1000);
   const message = `${agentId}\n${domain}\n${timestamp}`;
   const signature = await signMessage(nitDir, message);
-  return { agent_id: agentId, domain, timestamp, signature, switchedBranch, createdSkill, autoInitialized, autoPushed };
+  return { agent_id: agentId, domain, timestamp, signature, public_key: publicKey, switchedBranch, createdSkill, autoInitialized, autoPushed };
 }
 
 // ---------------------------------------------------------------------------
@@ -795,6 +806,9 @@ export async function push(options?: {
     throw new Error('No branches to push.');
   }
 
+  // Load machine hash for TOFU registration (sent on main branch pushes)
+  const machineHash = await loadMachineHash(nitDir);
+
   const results: PushResult[] = [];
 
   for (const b of toPush) {
@@ -809,6 +823,7 @@ export async function push(options?: {
       b.name,
       cardJson,
       b.commitHash,
+      b.name === 'main' ? machineHash : undefined,
     );
 
     if (result.success) {

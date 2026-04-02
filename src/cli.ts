@@ -34,6 +34,7 @@ import {
 import type { AuthProvider } from './types.js';
 import { formatDiff } from './diff.js';
 import { autoUpdate, version as nitVersion } from './update-check.js';
+import { loadMachineHash } from './fingerprint.js';
 
 // ANSI color helpers
 const bold = (s: string) => `\x1b[1m${s}\x1b[0m`;
@@ -184,6 +185,12 @@ async function cmdStatus() {
   console.log(`  Agent ID:    ${green(s.agentId)}`);
   console.log(`  Public key:  ${dim(s.publicKey)}`);
   console.log(`  Card URL:    ${s.cardUrl}`);
+  console.log();
+  const nitDir = findNitDir();
+  const machineHash = await loadMachineHash(nitDir);
+  if (machineHash) {
+    console.log(`  Machine:     ${dim(machineHash.slice(0, 16) + '...')}`);
+  }
   console.log();
   console.log(`  ${bold('Chain addresses:')}`);
   console.log(`    Solana:    ${s.walletAddresses.solana}`);

@@ -201,4 +201,35 @@ export interface LoginPayload {
   domain: string;
   timestamp: number;
   signature: string;
+  /** Agent's public key ("ed25519:<base64>") for transparency. */
+  public_key: string;
+}
+
+// ---------------------------------------------------------------------------
+// Identity registry types (server verify endpoint)
+// ---------------------------------------------------------------------------
+
+/** Identity metadata returned by the server's verify endpoint. */
+export interface IdentityMetadata {
+  registration_timestamp: number | null;
+  machine_identity_count: number;
+  ip_identity_count: number;
+  total_logins: number;
+  last_login_timestamp: number | null;
+  unique_domains: number;
+}
+
+/** App-defined trust policy for the verify endpoint. */
+export interface VerifyPolicy {
+  max_identities_per_ip?: number;
+  max_identities_per_machine?: number;
+  min_age_seconds?: number;
+  max_login_rate_per_hour?: number;
+}
+
+/** Server attestation included in the verify response. */
+export interface ServerAttestation {
+  server_signature: string;
+  server_url: string;
+  server_public_key: string;
 }

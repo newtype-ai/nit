@@ -73,9 +73,12 @@ export async function pushBranch(
   branch: string,
   cardJson: string,
   commitHash: string,
+  machineHash?: string | null,
 ): Promise<PushResult> {
   const path = `/agent-card/branches/${encodeURIComponent(branch)}`;
-  const body = JSON.stringify({ card_json: cardJson, commit_hash: commitHash });
+  const bodyObj: Record<string, string> = { card_json: cardJson, commit_hash: commitHash };
+  if (machineHash) bodyObj.machine_hash = machineHash;
+  const body = JSON.stringify(bodyObj);
 
   try {
     const authHeaders = await buildAuthHeaders(nitDir, 'PUT', path, body);

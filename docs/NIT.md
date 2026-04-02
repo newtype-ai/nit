@@ -213,15 +213,15 @@ Challenge payload contains: `{ nonce, agent_id, branch, exp }` with a 5-minute e
 This is how agents log into apps — the "connect your agent-card" pattern:
 
 ```
-Agent → App:  { agent_id, domain: "faam.io", timestamp, signature }
+Agent → App:  { agent_id, domain: "faam.io", timestamp, signature, public_key }
               where signature = sign("{agent_id}\n{domain}\n{timestamp}", privateKey)
 
-App verifies (pick one):
-
-  LOCAL:  fetch public card → read publicKey → ed25519.verify(message, signature, publicKey)
-  SERVER: POST api.newtype-ai.org/agent-card/verify { agent_id, domain, timestamp, signature }
-          → { verified: true, card: {...}, branch, readToken, wallet }
+App → Server: POST api.newtype-ai.org/agent-card/verify
+              { agent_id, domain, timestamp, signature, policy?: {...} }
+           → { verified, admitted, card, identity: {...metadata}, attestation: {...} }
 ```
+
+All verification goes through the server. The server acts as an **identity registry** (like a credit bureau) — it stores identity metadata, evaluates app-defined trust policy, and returns both a decision (`admitted`) and raw data (`identity`) so apps can make informed trust decisions. Like Stripe Radar: evaluates rules server-side for convenience, returns metadata for transparency.
 
 **Canonical signed message for app login:**
 ```
@@ -238,7 +238,7 @@ No redirect flow. No consent screen. No shared secrets. The card is a public doc
 
 **nit's role ends at identity verification.** The signature proves the agent owns the card — that's it. What happens next is the app's decision. Typically the app verifies the signature once, then issues its own session credential (JWT, cookie, API token, etc.) for subsequent requests. The agent doesn't need to sign every API call to the app — just the initial login. nit is not involved in session management, token refresh, or access control.
 
-**Identity ≠ admission.** The verify endpoint checks the cryptographic signature, not card content. A valid signature with an empty card returns `verified: true`. Apps enforce their own admission requirements — they can inspect the card after verification and reject agents with missing fields (no name, no skills, etc.). The cryptographic fields (`publicKey`, `wallet`) are enforced by nit; everything else is agent-controlled.
+**Identity ≠ admission.** The verify endpoint checks the cryptographic signature, not card content. A valid signature with an empty card returns `verified: true`. Apps enforce their own admission policy — they can inspect the card after verification and reject agents with missing fields (no name, no skills, etc.). The cryptographic fields (`publicKey`, `wallet`) are enforced by nit; everything else is agent-controlled.
 
 ---
 
@@ -316,7 +316,9 @@ Served at `agent-{uuid}.newtype-ai.org`. Public read for main branch, authentica
 
 ### `POST /agent-card/verify`
 
-Ownership verification endpoint. Apps POST the agent's signed login message; the server verifies the Ed25519 signature and returns the agent's domain-specific card + a read token for ongoing access.
+Identity verification and trust evaluation endpoint. Apps POST the agent's signed login message with optional trust policy; the server verifies the Ed25519 signature, evaluates policy against stored identity metadata, and returns a trust decision alongside the agent's card.
+
+The server acts as an **identity registry** — it never rejects identities, but provides data for apps to make their own trust decisions. Apps define their own policies via `policy`.
 
 **Body:**
 ```json
@@ -324,33 +326,81 @@ Ownership verification endpoint. Apps POST the agent's signed login message; the
   "agent_id": "550e8400-e29b-41d4-a716-446655440000",
   "domain": "faam.io",
   "timestamp": 1709123456,
-  "signature": "base64..."
+  "signature": "base64...",
+  "policy": {
+    "max_identities_per_ip": 10,
+    "max_identities_per_machine": 5,
+    "min_age_seconds": 3600
+  }
 }
 ```
+
+The `policy` object is optional. If omitted, `admitted` is always `true`.
 
 **Response (200):**
 ```json
 {
   "verified": true,
+  "admitted": true,
   "agent_id": "550e8400-...",
   "domain": "faam.io",
-  "card": { "name": "ResearchBot", "skills": [...], ... },
+  "card": { "name": "ResearchBot", "skills": [...] },
   "branch": "faam.io",
   "wallet": { "solana": "7Xf3kQ...", "evm": "0x1a2b..." },
-  "readToken": "eyJzdWIiOi..."
+  "readToken": "eyJzdWIiOi...",
+  "identity": {
+    "registration_timestamp": 1709000000,
+    "machine_identity_count": 3,
+    "ip_identity_count": 5,
+    "total_logins": 42,
+    "last_login_timestamp": 1709120000,
+    "unique_domains": 4
+  },
+  "attestation": {
+    "server_signature": "base64...",
+    "server_url": "https://api.newtype-ai.org",
+    "server_public_key": "ed25519:base64..."
+  }
 }
 ```
 
-- `card` — the **domain branch card** if the agent has pushed a branch matching the domain; otherwise falls back to the `main` branch card
-- `branch` — which branch the card came from (`"faam.io"` or `"main"`)
-- `wallet` — chain wallet addresses derived from the agent's Ed25519 keypair. `solana` (base58 of pubkey) and `evm` (EIP-55 checksummed). `null` for agents using older nit versions.
-- `readToken` — HMAC-signed read token for fetching the domain branch card later (30-day expiry). Use with `Authorization: Bearer <token>` on `GET /.well-known/agent-card.json?branch=faam.io`
+- `admitted` — whether the identity meets the app's `policy`. Always `true` if no policy were specified.
+- `identity` — raw identity metadata. Apps can use this for custom trust logic beyond what `policy` supports.
+  - `registration_timestamp` — when this identity was first registered (TOFU)
+  - `machine_identity_count` — how many identities share the same machine fingerprint
+  - `ip_identity_count` — how many identities were registered from the same IP
+  - `total_logins` — total verify calls for this identity
+  - `last_login_timestamp` — when this identity last verified
+  - `unique_domains` — how many different apps this identity has logged into
+- `attestation` — server's Ed25519 signature over the verification result. Apps can cache and re-verify offline.
+- `card`, `branch`, `wallet`, `readToken` — unchanged from previous versions.
+
+**Available policy:**
+
+| Requirement | Type | Description |
+|---|---|---|
+| `max_identities_per_ip` | number | Reject if too many identities registered from the same IP |
+| `max_identities_per_machine` | number | Reject if too many identities share the same machine fingerprint |
+| `min_age_seconds` | number | Reject identities younger than this |
+| `max_login_rate_per_hour` | number | Reject if login rate exceeds this threshold |
 
 **Error responses:**
 - `400` — malformed input (bad UUID, missing fields, invalid signature encoding)
 - `401` — timestamp expired (>5 minutes)
 - `403` — signature verification failed
 - `404` — agent not found (hasn't pushed main branch)
+
+### `GET /agent-card/server-key`
+
+Returns the server's Ed25519 public key for attestation verification.
+
+**Response (200):**
+```json
+{
+  "public_key": "ed25519:base64...",
+  "url": "https://api.newtype-ai.org"
+}
+```
 
 ---
 
@@ -466,6 +516,9 @@ Server-side branch data is stored in Cloudflare KV (`AGENT_BRANCHES` namespace):
 |-------------|-------|-------------|
 | `{agent_id}:{branch}` | `{ card_json, commit_hash, pushed_at }` | Branch data |
 | `{agent_id}:main:pubkey` | `ed25519:<base64>` | Identity anchor (set on first main push via TOFU) |
+| `{agent_id}:identity` | `{ machine_hash, registration_ip_hash, registration_timestamp, login_count, last_login_timestamp, login_domains }` | Identity metadata (set at TOFU, updated on each verify) |
+| `machine:{machine_hash}` | `["agent_id_1", ...]` | Machine → agents mapping (anti-sybil signal) |
+| `ip:{ip_hash}` | `["agent_id_1", ...]` | IP → agents mapping (anti-sybil signal) |
 
 ---
 
