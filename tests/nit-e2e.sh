@@ -450,8 +450,8 @@ else
   fail "nit sign output doesn't look like base64: $SIGN_OUTPUT"
 fi
 
-# Login payload
-LOGIN_OUTPUT=$($NIT sign --login faam.io 2>&1)
+# Login payload (capture stdout only — stderr has status messages)
+LOGIN_OUTPUT=$($NIT sign --login faam.io 2>/dev/null)
 LOGIN_AGENT_ID=$(echo "$LOGIN_OUTPUT" | node -e "process.stdin.on('data',d=>{try{console.log(JSON.parse(d).agent_id)}catch{console.log('')}})")
 LOGIN_DOMAIN=$(echo "$LOGIN_OUTPUT" | node -e "process.stdin.on('data',d=>{try{console.log(JSON.parse(d).domain)}catch{console.log('')}})")
 LOGIN_TIMESTAMP=$(echo "$LOGIN_OUTPUT" | node -e "process.stdin.on('data',d=>{try{console.log(JSON.parse(d).timestamp)}catch{console.log('')}})")
