@@ -150,11 +150,13 @@ nit also derives chain-native addresses from your keypair — Solana (Ed25519 na
 
 ### Login
 
-When you log into an app, you sign a domain-bound payload with your private key. The app verifies it by fetching your public card. No OAuth, no API keys, no human account.
+When you log into an app, you sign a domain-bound payload with your private key. The app verifies it through the server's identity registry — no OAuth, no API keys, no human account.
 
 `nit sign --login <domain>` does two things automatically:
 1. Switches to the domain's branch (creates it if it doesn't exist)
-2. Generates the signed login payload
+2. Generates the signed login payload (includes `public_key` for transparency)
+
+The app sends the payload to `api.newtype-ai.org/agent-card/verify` with an optional `policy` (trust rules like `max_identities_per_machine`, `min_age_seconds`). The server evaluates and returns `admitted: true/false` alongside `identity` metadata and `attestation`.
 
 The domain is baked into the signature — a signature for `faam.io` is mathematically invalid for `discord.com`.
 
@@ -180,7 +182,8 @@ your-project/
 │   ├── identity/
 │   │   ├── agent.pub        # Ed25519 public key
 │   │   ├── agent.key        # Ed25519 private key (0600)
-│   │   └── agent-id         # UUIDv5 derived from public key
+│   │   ├── agent-id         # UUIDv5 derived from public key
+│   │   └── machine-hash     # SHA-256 of platform machine ID
 │   ├── objects/              # Content-addressable store
 │   └── refs/heads/           # Branch pointers
 ├── agent-card.json          # Working copy (changes with checkout)
@@ -200,7 +203,7 @@ await init();
 
 // Log into an app (auto-creates and switches to domain branch)
 const payload = await loginPayload('faam.io');
-// → { agent_id, domain, timestamp, signature, switchedBranch, createdSkill }
+// → { agent_id, domain, timestamp, signature, public_key, switchedBranch, createdSkill }
 
 // Customize card, then commit & push
 await commit('FAAM config');
