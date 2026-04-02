@@ -624,7 +624,7 @@ async function cmdWallet() {
         solBalance = (lamports / 1_000_000_000).toFixed(4) + ' SOL';
       }
     }
-  } catch { /* RPC not configured or unreachable — skip balance */ }
+  } catch { solBalance = '(unavailable)'; }
 
   // Build card rows: [label, value, colorFn?]
   type CardRow = [string, string, ((s: string) => string)?] | null;

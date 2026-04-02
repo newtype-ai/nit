@@ -469,12 +469,8 @@ export async function loginPayload(
     autoInitialized = true;
 
     // Auto-push main (TOFU registration) — needed for server verification
-    try {
-      await push(options);
-      autoPushed = true;
-    } catch {
-      // Push may fail (offline) — payload still generated, server verify will 404
-    }
+    await push(options);
+    autoPushed = true;
   }
 
   // Auto-checkout domain branch

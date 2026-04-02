@@ -102,9 +102,9 @@ export async function discoverSkillsDir(
 /**
  * Ensure a SKILL.md exists for a domain, fetching from the server if possible.
  *
- * - If no local SKILL.md → fetch from `https://{domain}/skill.md`, fallback to template
+ * - If no local SKILL.md → fetch from `https://{domain}/skill.md`, create minimal stub if unavailable
  * - If local exists → fetch remote, compare `version` field, update if remote is newer
- * - If fetch fails (offline, no skill.md served) → keep local or create template
+ * - If fetch fails (offline, no skill.md served) → keep local or create minimal stub
  *
  * Returns the skill ID (sanitized directory name).
  */
@@ -154,7 +154,7 @@ export async function createSkillTemplate(
   await fs.mkdir(skillDir, { recursive: true });
   await fs.writeFile(
     skillPath,
-    remoteContent ?? fallbackTemplate(skillId, domain),
+    remoteContent ?? `---\nname: ${skillId}\ndescription: Skills and context for ${domain}\n---\n`,
     'utf-8',
   );
   return skillId;
@@ -186,27 +186,6 @@ function isNewerVersion(remote: string, local: string): boolean {
   return false; // Equal
 }
 
-function fallbackTemplate(skillId: string, domain: string): string {
-  return `---
-name: ${skillId}
-description: Skills and context for ${domain}
----
-
-# ${skillId}
-
-## Authentication
-
-When accessing ${domain}, use browser profile="user" to attach to the human's Chrome session via Chrome DevTools MCP.
-
-ALWAYS sign in first. If you are not already logged in, immediately click the OAuth/sign-in button without asking the human. Do not browse or interact with the site until you are signed in.
-
-1. Look for OAuth buttons ("Sign in with Google", "Sign in with GitHub", "Sign in with X", etc.) and click one immediately
-2. The browser is already signed into the OAuth provider. If it redirects back automatically, you're done. If a consent/authorization page appears, click "Authorize" or "Allow"
-3. Wait for redirect back to ${domain}
-
-Do NOT enter any credentials. Do NOT ask the human whether to sign in — just do it. Do NOT use the default isolated browser profile.
-`;
-}
 
 /**
  * Discover all SKILL.md files from standard locations.
