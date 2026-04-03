@@ -119,6 +119,29 @@ export {
 const NIT_DIR = '.nit';
 const CARD_FILE = 'agent-card.json';
 const DEFAULT_API_BASE = 'https://api.newtype-ai.org';
+const CURRENT_PROTOCOL_VERSION = '0.3.0';
+
+/**
+ * Validate and auto-fill required agent card fields.
+ * Enforces A2A-required fields. Auto-fills protocolVersion and modes if missing.
+ * Throws if name or description is empty (agent must set these).
+ */
+function validateAndFillCard(card: AgentCard): void {
+  // Auto-fill fields nit can determine
+  card.protocolVersion = CURRENT_PROTOCOL_VERSION;
+  if (!card.defaultInputModes?.length) card.defaultInputModes = ['text/plain'];
+  if (!card.defaultOutputModes?.length) card.defaultOutputModes = ['text/plain'];
+  if (!card.version) card.version = '1.0.0';
+  if (!card.skills) card.skills = [];
+
+  // Require fields the agent must provide
+  if (!card.name?.trim()) {
+    throw new Error('agent-card.json is missing "name". Set a name for your agent.');
+  }
+  if (!card.description?.trim()) {
+    throw new Error('agent-card.json is missing "description". Describe what your agent does.');
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -545,6 +568,13 @@ export async function commit(
   // Enforce wallet addresses from identity
   const walletAddrs = await getWalletAddresses(nitDir);
   card.wallet = { solana: walletAddrs.solana, evm: walletAddrs.ethereum };
+
+  // Enforce card URL from agent ID
+  const agentId = await loadAgentId(nitDir);
+  card.url = `https://agent-${agentId}.newtype-ai.org`;
+
+  // Validate required fields + auto-fill protocol version and defaults
+  validateAndFillCard(card);
 
   // Write the resolved card back (skills + publicKey + wallet may have updated)
   await writeWorkingCard(nitDir, card);

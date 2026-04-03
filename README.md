@@ -19,7 +19,7 @@ U| |\  |u      | |      /| |\
 
 - **Self-sovereign** — your keys, your identity. No authority assigns or revokes it
 - **Ed25519 signed** — every commit cryptographically signed
-- **Compatible with [A2A protocol](https://google.github.io/A2A/)** — uses the `agent-card.json` format
+- **A2A card format** — uses the `agent-card.json` format from [A2A protocol](https://google.github.io/A2A/) (identity layer, not communication)
 - **MIT licensed**
 
 ## Install

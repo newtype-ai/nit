@@ -238,7 +238,20 @@ No redirect flow. No consent screen. No shared secrets. The card is a public doc
 
 **nit's role ends at identity verification.** The signature proves the agent owns the card — that's it. What happens next is the app's decision. Typically the app verifies the signature once, then issues its own session credential (JWT, cookie, API token, etc.) for subsequent requests. The agent doesn't need to sign every API call to the app — just the initial login. nit is not involved in session management, token refresh, or access control.
 
-**Identity ≠ admission.** The verify endpoint checks the cryptographic signature, not card content. A valid signature with an empty card returns `verified: true`. Apps enforce their own admission policy — they can inspect the card after verification and reject agents with missing fields (no name, no skills, etc.). The cryptographic fields (`publicKey`, `wallet`) are enforced by nit; everything else is agent-controlled.
+**Identity ≠ admission.** `verified` means the signature is valid — the agent is who it claims. `admitted` means the identity meets the app's trust policy. Apps define their own admission criteria via the `policy` parameter on the verify endpoint. The server is a neutral identity registry — it evaluates policy and returns data, but never rejects on its own.
+
+**Card validation.** nit enforces required fields at commit time: `protocolVersion` (auto-set to current), `name` and `description` (required — agent must set these), `publicKey` and `wallet` (auto-injected from identity), `url` (auto-set from agent ID), `defaultInputModes`/`defaultOutputModes` (default to `["text/plain"]`).
+
+---
+
+## Design Decisions
+
+- **No key rotation.** Agent ID = UUIDv5(publicKey) — a mathematical fact, not a stored binding. Changing the key changes the ID. If a key is compromised, key rotation doesn't help (the attacker can also rotate). The correct response: create a new identity and notify apps.
+- **Branch privacy.** Non-main branches require challenge-response authentication. An agent's platform-specific cards (skills, descriptions) may reveal competitive strategy. Branch privacy protects per-platform persona separation.
+- **Transaction signing.** One keypair for both login AND on-chain transactions. Like Apple Pay: one identity, both authentication and payments. The agent constructs transactions; nit signs them with the identity key. No separate wallet tool needed.
+- **Identity registry.** The server acts as a neutral registry, like a credit bureau. It stores identity metadata (machine fingerprint, IP, timestamps, login history) and never rejects. Apps define their own trust policy. Like Stripe Radar: evaluates rules server-side for convenience, returns raw metadata for transparency.
+- **Machine fingerprint.** Collected at `nit init` (platform-specific machine ID, SHA-256 hashed for privacy), sent to server at TOFU push. The server tracks identities per machine and per IP as anti-sybil signals. One of many combined signals — no single signal is sufficient.
+- **A2A compatibility.** The agent-card format is compatible with Google's A2A protocol. However, nit is an **identity layer**, not a communication layer. nit publishes discoverable cards but does not implement A2A's JSON-RPC communication protocol. Agents that need A2A interop can wrap their local process in an HTTP server separately.
 
 ---
 
@@ -375,13 +388,15 @@ The `policy` object is optional. If omitted, `admitted` is always `true`.
 - `attestation` — server's Ed25519 signature over the verification result. Apps can cache and re-verify offline.
 - `card`, `branch`, `wallet`, `readToken` — unchanged from previous versions.
 
-**Available policy:**
+**Available policy fields:**
 
-| Requirement | Type | Description |
+The `policy` parameter is optional. If omitted (or empty `{}`), `admitted` is always `true`. The server is fully neutral — it only evaluates rules the app explicitly provides. No defaults.
+
+| Field | Type | Description |
 |---|---|---|
 | `max_identities_per_ip` | number | Reject if too many identities registered from the same IP |
 | `max_identities_per_machine` | number | Reject if too many identities share the same machine fingerprint |
-| `min_age_seconds` | number | Reject identities younger than this |
+| `min_age_seconds` | number | Reject identities younger than this (e.g., 5) |
 | `max_login_rate_per_hour` | number | Reject if login rate exceeds this threshold |
 
 **Error responses:**
@@ -439,7 +454,7 @@ All commands run in a directory containing `agent-card.json` and `.nit/`.
 
 ## Agent Card Format
 
-The agent card is an A2A-compatible JSON document. When managed by nit, the `publicKey` field is present on the main branch.
+The agent card uses the A2A-compatible JSON format (identity fields only — nit is an identity layer, not an A2A communication layer). When managed by nit, the `publicKey` field is present on the main branch.
 
 ```json
 {
