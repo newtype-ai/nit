@@ -7,19 +7,20 @@
 
 import { promises as fs, statSync } from 'node:fs';
 import { join, basename, dirname, resolve } from 'node:path';
-import type {
-  AgentCard,
-  AuthConfig,
-  AuthProvider,
-  NitCommit,
-  NitBranch,
-  NitRpcConfig,
-  DiffResult,
-  PushResult,
-  StatusResult,
-  WalletAddresses,
-  SignTxResult,
-  BroadcastResult,
+import {
+  assertAgentCardShape,
+  type AgentCard,
+  type AuthConfig,
+  type AuthProvider,
+  type NitCommit,
+  type NitBranch,
+  type NitRpcConfig,
+  type DiffResult,
+  type PushResult,
+  type StatusResult,
+  type WalletAddresses,
+  type SignTxResult,
+  type BroadcastResult,
 } from './types.js';
 import {
   hashObject,
@@ -63,7 +64,8 @@ import { readConfig, writeConfig, getRemoteUrl, getSkillsDir, setRpcUrl as confi
 import { signTx as txSignTx, broadcast as txBroadcast } from './tx.js';
 import { getMachineId, computeMachineHash, saveMachineHash, loadMachineHash } from './fingerprint.js';
 
-// Re-export types for consumers
+// Re-export types and runtime validators for consumers
+export { assertAgentCardShape } from './types.js';
 export type {
   AgentCard,
   AgentCardSkill,
@@ -204,8 +206,12 @@ async function readWorkingCard(nitDir: string): Promise<AgentCard> {
   const cardPath = join(projectDir(nitDir), CARD_FILE);
   try {
     const raw = await fs.readFile(cardPath, 'utf-8');
-    return JSON.parse(raw) as AgentCard;
-  } catch {
+    const parsed: unknown = JSON.parse(raw);
+    assertAgentCardShape(parsed);
+    return parsed;
+  } catch (err) {
+    if (err instanceof Error && err.message.startsWith('Invalid agent-card.json:'))
+      throw err;
     throw new Error(`Cannot read ${CARD_FILE}. Does it exist?`);
   }
 }
