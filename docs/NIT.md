@@ -106,6 +106,8 @@ A **branch** is a named pointer to a commit, representing a **platform persona**
 
 An agent can expose web-research skills to FAAM, coding skills to a dev platform, and conversation skills to Discord — all from the same identity.
 
+> Branch names must contain only letters, digits, dots, and hyphens. Max 253 characters. Colons are forbidden because the server uses `{agent_id}:{branch}` as the KV key — internal metadata keys like `main:pubkey` and `identity` use colons after the agent ID. The CLI additionally requires names to start and end with alphanumeric characters and rejects `..` sequences.
+
 ### Commits
 
 nit uses a **content-addressable store** (SHA-256), analogous to git:
@@ -285,9 +287,15 @@ Push a branch's card + commit hash.
 - For `main` branch, the `publicKey` field in the card is stored for future auth
 - TOFU only applies to `main` branch pushes
 
+> Branch names are validated: must match `/^[a-zA-Z0-9._-]+$/`, max 253 characters. Colons are forbidden because the server uses `{agent_id}:{branch}` as the KV key — a branch named `main:pubkey` or `identity` would overwrite internal metadata. Invalid names return `400`.
+
 ### `GET /agent-card/branches`
 
 List all pushed branches for the authenticated agent.
+
+**Query params:**
+- `limit` — max number of branches to return
+- `cursor` — opaque pagination cursor from a previous response
 
 **Response (200):**
 ```json
@@ -295,13 +303,16 @@ List all pushed branches for the authenticated agent.
   "branches": [
     { "name": "main", "commit_hash": "abc...", "pushed_at": "2026-02-26T..." },
     { "name": "faam.io", "commit_hash": "def...", "pushed_at": "2026-02-26T..." }
-  ]
+  ],
+  "cursor": "opaque_pagination_token"
 }
 ```
 
+The `cursor` field is present only when more results exist. Internal KV keys (`:pubkey`, `:identity`) are filtered out — only real branch names appear. Branch values are fetched in parallel.
+
 ### `DELETE /agent-card/branches/:branch`
 
-Remove a branch. Cannot delete `main`.
+Remove a branch. Cannot delete `main`. Branch names are validated with the same rules as PUT (must match `/^[a-zA-Z0-9._-]+$/`, max 253 characters).
 
 **Response (200):**
 ```json
@@ -399,6 +410,8 @@ The `policy` parameter is optional. If omitted (or empty `{}`), `admitted` is al
 | `min_age_seconds` | number | Reject identities younger than this (e.g., 5) |
 | `max_login_rate_per_hour` | number | Reject if login rate exceeds this threshold |
 
+> **Policy behavior for new agents:** When an agent has no stored identity metadata (brand new or TOFU not yet complete), `min_age_seconds` and `max_login_rate_per_hour` cause `admitted: false`. New agents with no history fail these checks rather than silently bypassing them. If your app should accept new agents, omit these fields or handle `admitted: false` with a "try again later" message.
+
 **Error responses:**
 - `400` — malformed input (bad UUID, missing fields, invalid signature encoding)
 - `401` — timestamp expired (>5 minutes)
@@ -483,6 +496,8 @@ The agent card uses the A2A-compatible JSON format (identity fields only — nit
   }
 }
 ```
+
+> **Runtime shape validation.** When reading an agent card (from disk or server), nit validates the parsed JSON via `assertAgentCardShape()`: root must be a plain object; `name`, `description`, `url` must be strings if present; `skills` must be an array if present. This is separate from commit-time validation (`validateAndFillCard`) which enforces required fields.
 
 **Field reference:**
 
