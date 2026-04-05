@@ -5,7 +5,7 @@
 // Never throws — returns null on any failure.
 // ---------------------------------------------------------------------------
 
-import { execSync } from 'node:child_process';
+import { execSync, execFileSync } from 'node:child_process';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { readFile, writeFile } from 'node:fs/promises';
@@ -118,7 +118,9 @@ export async function autoUpdate(): Promise<void> {
   process.stderr.write(`nit: updating ${current} → ${latest} — https://github.com/newtype-ai/nit/releases/tag/v${latest}\n`);
 
   try {
-    execSync('npm install -g @newtype-ai/nit@latest', {
+    // TODO: Verify npm provenance/signatures before installing
+    // See: https://docs.npmjs.com/generating-provenance-statements
+    execSync(`npm install -g @newtype-ai/nit@${latest}`, {
       stdio: ['ignore', 'ignore', 'pipe'],
       timeout: 30_000,
     });
@@ -127,10 +129,10 @@ export async function autoUpdate(): Promise<void> {
     return;
   }
 
-  // Re-exec the original command with the updated binary
+  // Re-exec with explicit args (no shell interpolation)
   try {
-    const args = process.argv.slice(2).join(' ');
-    execSync(`nit ${args}`, { stdio: 'inherit', timeout: 60_000 });
+    const args = process.argv.slice(2);
+    execFileSync('nit', args, { stdio: 'inherit', timeout: 60_000 });
     process.exit(0);
   } catch (err) {
     // Forward the exit code from the re-exec'd process
