@@ -122,6 +122,33 @@ const DEFAULT_API_BASE = 'https://api.newtype-ai.org';
 const CURRENT_PROTOCOL_VERSION = '0.3.0';
 
 /**
+ * Validate a branch name for safety and consistency.
+ * Branch names become filesystem path components (refs/heads/{name}),
+ * so we reject traversal sequences and restrict to domain-safe characters.
+ */
+function validateBranchName(name: string): void {
+  if (!name) {
+    throw new Error('Branch name cannot be empty.');
+  }
+  if (name.length > 253) {
+    throw new Error('Branch name cannot exceed 253 characters.');
+  }
+  if (/[\x00-\x1f\x7f]/.test(name)) {
+    throw new Error(`Branch name contains control characters: "${name}".`);
+  }
+  if (/[:/\\]/.test(name) || name.includes('..')) {
+    throw new Error(
+      `Branch name "${name}" contains unsafe characters. Avoid : / \\ and ..`,
+    );
+  }
+  if (!/^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$/.test(name)) {
+    throw new Error(
+      `Branch name "${name}" is invalid. Use letters, digits, dots, hyphens; must start and end with alphanumeric.`,
+    );
+  }
+}
+
+/**
  * Validate and auto-fill required agent card fields.
  * Enforces A2A-required fields. Auto-fills protocolVersion and modes if missing.
  * Throws if name or description is empty (agent must set these).
@@ -510,6 +537,7 @@ export async function loginPayload(
   let createdSkill: string | undefined;
   const currentBranch = await getCurrentBranch(nitDir);
   if (currentBranch !== domain) {
+    validateBranchName(domain);
     const isNew = !(await getBranch(nitDir, domain));
     if (isNew) {
       const headHash = await resolveHead(nitDir);
@@ -707,6 +735,7 @@ export async function branch(
   const nitDir = findNitDir(options?.projectDir);
 
   if (name) {
+    validateBranchName(name);
     // Create new branch from HEAD
     const existing = await getBranch(nitDir, name);
     if (existing) {
@@ -769,6 +798,7 @@ export async function checkout(
   branchName: string,
   options?: { projectDir?: string },
 ): Promise<{ autoCommitted?: boolean }> {
+  validateBranchName(branchName);
   const nitDir = findNitDir(options?.projectDir);
   let autoCommitted = false;
 

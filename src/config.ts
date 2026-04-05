@@ -18,6 +18,16 @@ import type { NitConfig, NitRemoteConfig, NitRpcConfig } from './types.js';
 const CONFIG_FILE = 'config';
 
 /**
+ * Validate that a URL uses a safe scheme (http or https only).
+ * Prevents file://, javascript:, and other dangerous URL schemes.
+ */
+function validateHttpUrl(url: string, label: string): void {
+  if (!/^https?:\/\//i.test(url)) {
+    throw new Error(`${label} must use http:// or https://`);
+  }
+}
+
+/**
  * Read and parse the .nit/config file.
  * Returns an empty config if the file does not exist.
  */
@@ -93,6 +103,7 @@ export async function setRemoteUrl(
   remoteName: string,
   url: string,
 ): Promise<void> {
+  validateHttpUrl(url, 'Remote URL');
   const config = await readConfig(nitDir);
 
   if (!config.remotes[remoteName]) {
@@ -144,6 +155,7 @@ export async function setRpcUrl(
   chain: string,
   url: string,
 ): Promise<void> {
+  validateHttpUrl(url, 'RPC URL');
   const config = await readConfig(nitDir);
 
   if (!config.rpc) {
