@@ -233,3 +233,29 @@ export interface ServerAttestation {
   server_url: string;
   server_public_key: string;
 }
+
+// ---------------------------------------------------------------------------
+// Runtime shape validation
+// ---------------------------------------------------------------------------
+
+/**
+ * Lightweight runtime shape check for parsed agent-card.json.
+ *
+ * Does NOT enforce required fields (that's validateAndFillCard's job at
+ * commit time).  Only verifies that present fields have the correct JS type
+ * so downstream code never operates on garbage data.
+ */
+export function assertAgentCardShape(obj: unknown): asserts obj is AgentCard {
+  if (obj === null || typeof obj !== 'object' || Array.isArray(obj)) {
+    throw new Error('Invalid agent-card.json: root must be a JSON object');
+  }
+  const o = obj as Record<string, unknown>;
+  if ('name' in o && typeof o.name !== 'string')
+    throw new Error('Invalid agent-card.json: name must be a string');
+  if ('description' in o && typeof o.description !== 'string')
+    throw new Error('Invalid agent-card.json: description must be a string');
+  if ('skills' in o && !Array.isArray(o.skills))
+    throw new Error('Invalid agent-card.json: skills must be an array');
+  if ('url' in o && typeof o.url !== 'string')
+    throw new Error('Invalid agent-card.json: url must be a string');
+}

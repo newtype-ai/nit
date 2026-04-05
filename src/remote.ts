@@ -17,7 +17,7 @@
 // ---------------------------------------------------------------------------
 
 import { createHash } from 'node:crypto';
-import type { AgentCard, PushResult } from './types.js';
+import { assertAgentCardShape, type AgentCard, type PushResult } from './types.js';
 import { loadAgentId, signMessage, signChallenge } from './identity.js';
 
 // ---------------------------------------------------------------------------
@@ -211,7 +211,9 @@ export async function fetchBranchCard(
 
   // Main branch or already authorized
   if (res.ok) {
-    return (await res.json()) as AgentCard;
+    const card: unknown = await res.json();
+    assertAgentCardShape(card);
+    return card;
   }
 
   // Challenge-response for non-main branches
@@ -243,7 +245,9 @@ export async function fetchBranchCard(
       );
     }
 
-    return (await authRes.json()) as AgentCard;
+    const card: unknown = await authRes.json();
+    assertAgentCardShape(card);
+    return card;
   }
 
   throw new Error(`Failed to fetch card: HTTP ${res.status}`);
