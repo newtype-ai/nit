@@ -19,6 +19,7 @@
 import { createHash } from 'node:crypto';
 import { assertAgentCardShape, type AgentCard, type PushResult } from './types.js';
 import { loadAgentId, signMessage, signChallenge } from './identity.js';
+import { version } from './update-check.js';
 
 // ---------------------------------------------------------------------------
 // Ed25519 signature auth for write operations
@@ -57,6 +58,7 @@ async function buildAuthHeaders(
     'X-Nit-Agent-Id': agentId,
     'X-Nit-Timestamp': timestamp,
     'X-Nit-Signature': signature,
+    'X-Nit-Client-Version': version,
   };
 }
 
