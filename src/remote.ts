@@ -17,9 +17,15 @@
 // ---------------------------------------------------------------------------
 
 import { createHash } from 'node:crypto';
+import { hostname, platform, arch } from 'node:os';
 import { assertAgentCardShape, type AgentCard, type PushResult } from './types.js';
 import { loadAgentId, signMessage, signChallenge } from './identity.js';
 import { version } from './update-check.js';
+
+// Client-declared signals (server stores but treats as untrusted)
+const platformSignal = `${platform()}-${arch()}`;
+const hostnameHash = createHash('sha256').update(hostname()).digest('hex');
+
 
 // ---------------------------------------------------------------------------
 // Ed25519 signature auth for write operations
@@ -46,6 +52,7 @@ async function buildAuthHeaders(
 ): Promise<Record<string, string>> {
   const agentId = await loadAgentId(nitDir);
   const timestamp = Math.floor(Date.now() / 1000).toString();
+  const workspaceHash = createHash('sha256').update(nitDir).digest('hex');
 
   let message = `${method}\n${path}\n${agentId}\n${timestamp}`;
   if (body !== undefined) {
@@ -59,6 +66,9 @@ async function buildAuthHeaders(
     'X-Nit-Timestamp': timestamp,
     'X-Nit-Signature': signature,
     'X-Nit-Client-Version': version,
+    'X-Nit-Platform': platformSignal,
+    'X-Nit-Hostname-Hash': hostnameHash,
+    'X-Nit-Workspace-Hash': workspaceHash,
   };
 }
 
