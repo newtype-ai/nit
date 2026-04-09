@@ -13,7 +13,7 @@
 
 import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
-import type { NitConfig, NitRemoteConfig, NitRpcConfig } from './types.js';
+import type { AgentRuntime, NitConfig, NitRemoteConfig, NitRpcConfig } from './types.js';
 
 const CONFIG_FILE = 'config';
 
@@ -167,6 +167,69 @@ export async function setRpcUrl(
 }
 
 // ---------------------------------------------------------------------------
+// Runtime (self-declared LLM provider identity)
+// ---------------------------------------------------------------------------
+
+const PROVIDER_RE = /^[a-z0-9-]+$/;
+const MAX_RUNTIME_FIELD_LEN = 100;
+
+function validateRuntimeField(value: string, label: string): void {
+  if (typeof value !== 'string' || value.length === 0) {
+    throw new Error(`${label} must be a non-empty string`);
+  }
+  if (value.length > MAX_RUNTIME_FIELD_LEN) {
+    throw new Error(`${label} must be at most ${MAX_RUNTIME_FIELD_LEN} characters`);
+  }
+}
+
+/**
+ * Set (or update) the self-declared runtime attestation.
+ * `provider` must be lowercase letters, digits, and hyphens only.
+ */
+export async function setRuntime(
+  nitDir: string,
+  provider: string,
+  model: string,
+  harness: string,
+): Promise<AgentRuntime> {
+  validateRuntimeField(provider, 'runtime.provider');
+  validateRuntimeField(model, 'runtime.model');
+  validateRuntimeField(harness, 'runtime.harness');
+  if (!PROVIDER_RE.test(provider)) {
+    throw new Error('runtime.provider must contain only lowercase letters, digits, and hyphens');
+  }
+  const runtime: AgentRuntime = {
+    provider,
+    model,
+    harness,
+    declared_at: Math.floor(Date.now() / 1000),
+  };
+  const config = await readConfig(nitDir);
+  config.runtime = runtime;
+  await writeConfig(nitDir, config);
+  return runtime;
+}
+
+/**
+ * Get the configured runtime, or null if not set.
+ */
+export async function getRuntime(
+  nitDir: string,
+): Promise<AgentRuntime | null> {
+  const config = await readConfig(nitDir);
+  return config.runtime ?? null;
+}
+
+/**
+ * Clear the runtime from config.
+ */
+export async function clearRuntime(nitDir: string): Promise<void> {
+  const config = await readConfig(nitDir);
+  delete config.runtime;
+  await writeConfig(nitDir, config);
+}
+
+// ---------------------------------------------------------------------------
 // INI parser / serializer
 // ---------------------------------------------------------------------------
 
@@ -177,6 +240,7 @@ function parseConfig(raw: string): NitConfig {
   let currentRemote: string | null = null;
   let currentRpcChain: string | null = null;
   let skillsDir: string | undefined;
+  const runtimeFields: Partial<Record<'provider' | 'model' | 'harness' | 'declared_at', string>> = {};
 
   for (const line of raw.split('\n')) {
     const trimmed = line.trim();
@@ -213,6 +277,14 @@ function parseConfig(raw: string): NitConfig {
       continue;
     }
 
+    // Section header: [runtime]
+    if (trimmed === '[runtime]') {
+      currentSection = 'runtime';
+      currentRemote = null;
+      currentRpcChain = null;
+      continue;
+    }
+
     // Key-value pair: key = value
     const kvMatch = trimmed.match(/^(\w+)\s*=\s*(.+)$/);
     if (kvMatch) {
@@ -231,6 +303,10 @@ function parseConfig(raw: string): NitConfig {
         if (key === 'dir') {
           skillsDir = value.trim();
         }
+      } else if (currentSection === 'runtime') {
+        if (key === 'provider' || key === 'model' || key === 'harness' || key === 'declared_at') {
+          runtimeFields[key] = value.trim();
+        }
       }
     }
   }
@@ -238,6 +314,17 @@ function parseConfig(raw: string): NitConfig {
   const config: NitConfig = { remotes, skillsDir };
   if (Object.keys(rpc).length > 0) {
     config.rpc = rpc;
+  }
+  if (runtimeFields.provider && runtimeFields.model && runtimeFields.harness && runtimeFields.declared_at) {
+    const declaredAt = parseInt(runtimeFields.declared_at, 10);
+    if (Number.isFinite(declaredAt)) {
+      config.runtime = {
+        provider: runtimeFields.provider,
+        model: runtimeFields.model,
+        harness: runtimeFields.harness,
+        declared_at: declaredAt,
+      };
+    }
   }
   return config;
 }
@@ -267,6 +354,15 @@ function serializeConfig(config: NitConfig): string {
   if (config.skillsDir) {
     lines.push('[skills]');
     lines.push(`  dir = ${config.skillsDir}`);
+    lines.push('');
+  }
+
+  if (config.runtime) {
+    lines.push('[runtime]');
+    lines.push(`  provider = ${config.runtime.provider}`);
+    lines.push(`  model = ${config.runtime.model}`);
+    lines.push(`  harness = ${config.runtime.harness}`);
+    lines.push(`  declared_at = ${config.runtime.declared_at}`);
     lines.push('');
   }
 

@@ -64,6 +64,20 @@ export interface NitConfig {
   skillsDir?: string;
   /** RPC endpoints keyed by chain name (e.g. "evm", "solana") */
   rpc?: Record<string, NitRpcConfig>;
+  /** Self-declared LLM runtime (injected into card at commit time). */
+  runtime?: AgentRuntime;
+}
+
+/** Self-declared runtime attestation — which LLM powers the agent. */
+export interface AgentRuntime {
+  /** LLM provider (e.g., "anthropic", "openai", "google", "openrouter", "huggingface", "local"). */
+  provider: string;
+  /** Model identifier (self-reported, e.g., "claude-opus-4-6"). */
+  model: string;
+  /** Harness that runs the agent (e.g., "claude-code", "openclaw", "managed-agents", "codex"). */
+  harness: string;
+  /** Unix timestamp when runtime was declared. */
+  declared_at: number;
 }
 
 /** A2A-compatible agent card. */
@@ -80,6 +94,8 @@ export interface AgentCard {
     solana: string;
     evm: string;
   };
+  /** Self-declared LLM runtime (optional). Apps can check consistency or display provider info. */
+  runtime?: AgentRuntime;
   defaultInputModes: string[];
   defaultOutputModes: string[];
   skills: AgentCardSkill[];
@@ -258,4 +274,17 @@ export function assertAgentCardShape(obj: unknown): asserts obj is AgentCard {
     throw new Error('Invalid agent-card.json: skills must be an array');
   if ('url' in o && typeof o.url !== 'string')
     throw new Error('Invalid agent-card.json: url must be a string');
+  if ('runtime' in o) {
+    if (o.runtime === null || typeof o.runtime !== 'object' || Array.isArray(o.runtime))
+      throw new Error('Invalid agent-card.json: runtime must be a JSON object');
+    const r = o.runtime as Record<string, unknown>;
+    if ('provider' in r && typeof r.provider !== 'string')
+      throw new Error('Invalid agent-card.json: runtime.provider must be a string');
+    if ('model' in r && typeof r.model !== 'string')
+      throw new Error('Invalid agent-card.json: runtime.model must be a string');
+    if ('harness' in r && typeof r.harness !== 'string')
+      throw new Error('Invalid agent-card.json: runtime.harness must be a string');
+    if ('declared_at' in r && (typeof r.declared_at !== 'number' || !Number.isFinite(r.declared_at)))
+      throw new Error('Invalid agent-card.json: runtime.declared_at must be a finite number');
+  }
 }
