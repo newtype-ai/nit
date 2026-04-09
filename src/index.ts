@@ -21,6 +21,7 @@ import {
   type WalletAddresses,
   type SignTxResult,
   type BroadcastResult,
+  type AgentRuntime,
 } from './types.js';
 import {
   hashObject,
@@ -60,7 +61,16 @@ import {
   pushAll as remotePushAll,
   deleteRemoteBranch,
 } from './remote.js';
-import { readConfig, writeConfig, getRemoteUrl, getSkillsDir, setRpcUrl as configSetRpcUrl } from './config.js';
+import {
+  readConfig,
+  writeConfig,
+  getRemoteUrl,
+  getSkillsDir,
+  setRpcUrl as configSetRpcUrl,
+  setRuntime as configSetRuntime,
+  getRuntime as configGetRuntime,
+  clearRuntime as configClearRuntime,
+} from './config.js';
 import { signTx as txSignTx, broadcast as txBroadcast } from './tx.js';
 import { getMachineId, computeMachineHash, saveMachineHash, loadMachineHash } from './fingerprint.js';
 
@@ -607,6 +617,14 @@ export async function commit(
   const agentId = await loadAgentId(nitDir);
   card.url = `https://agent-${agentId}.newtype-ai.org`;
 
+  // Inject self-declared runtime if configured
+  const runtime = await configGetRuntime(nitDir);
+  if (runtime) {
+    card.runtime = runtime;
+  } else {
+    delete card.runtime;
+  }
+
   // Validate required fields + auto-fill protocol version and defaults
   validateAndFillCard(card);
 
@@ -1020,6 +1038,43 @@ export async function rpcInfo(
   const nitDir = findNitDir(options?.projectDir);
   const config = await readConfig(nitDir);
   return config.rpc ?? {};
+}
+
+// ---------------------------------------------------------------------------
+// runtime (self-declared LLM provider identity)
+// ---------------------------------------------------------------------------
+
+/**
+ * Set the self-declared runtime attestation. Injected into the card at commit time.
+ */
+export async function runtimeSet(
+  provider: string,
+  model: string,
+  harness: string,
+  options?: { projectDir?: string },
+): Promise<AgentRuntime> {
+  const nitDir = findNitDir(options?.projectDir);
+  return configSetRuntime(nitDir, provider, model, harness);
+}
+
+/**
+ * Get the currently configured runtime, or null if not set.
+ */
+export async function runtimeShow(
+  options?: { projectDir?: string },
+): Promise<AgentRuntime | null> {
+  const nitDir = findNitDir(options?.projectDir);
+  return configGetRuntime(nitDir);
+}
+
+/**
+ * Clear the runtime from config.
+ */
+export async function runtimeUnset(
+  options?: { projectDir?: string },
+): Promise<void> {
+  const nitDir = findNitDir(options?.projectDir);
+  await configClearRuntime(nitDir);
 }
 
 // ---------------------------------------------------------------------------

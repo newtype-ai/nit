@@ -24,6 +24,9 @@ import {
   broadcast,
   rpcSetUrl,
   rpcInfo,
+  runtimeSet,
+  runtimeShow,
+  runtimeUnset,
   authSet,
   authShow,
   reset,
@@ -89,6 +92,9 @@ async function main() {
         break;
       case 'rpc':
         await cmdRpc(args);
+        break;
+      case 'runtime':
+        await cmdRuntime(args);
         break;
       case 'auth':
         await cmdAuth(args);
@@ -490,6 +496,46 @@ async function cmdRpc(args: string[]) {
   }
 }
 
+async function cmdRuntime(args: string[]) {
+  if (args[0] === 'set') {
+    const provider = args[1];
+    const model = args[2];
+    const harness = args[3];
+    if (!provider || !model || !harness) {
+      console.error('Usage: nit runtime set <provider> <model> <harness>');
+      process.exit(1);
+    }
+    const runtime = await runtimeSet(provider, model, harness);
+    console.log(`Set runtime: ${bold(runtime.provider)} / ${runtime.model} / ${runtime.harness}`);
+    console.log(dim(`  declared_at = ${runtime.declared_at}`));
+    return;
+  }
+
+  if (args[0] === 'unset') {
+    await runtimeUnset();
+    console.log('Runtime cleared.');
+    return;
+  }
+
+  if (args[0] && args[0] !== 'show') {
+    console.error(`nit runtime: unknown subcommand '${args[0]}'`);
+    console.error('Usage: nit runtime [set <provider> <model> <harness> | show | unset]');
+    process.exit(1);
+  }
+
+  // Default / show: display current runtime
+  const runtime = await runtimeShow();
+  if (!runtime) {
+    console.log(dim('No runtime set.'));
+    console.log(dim('Run: nit runtime set <provider> <model> <harness>'));
+    return;
+  }
+  console.log(`  ${bold('provider')}    ${runtime.provider}`);
+  console.log(`  ${bold('model')}       ${runtime.model}`);
+  console.log(`  ${bold('harness')}     ${runtime.harness}`);
+  console.log(`  ${bold('declared_at')} ${runtime.declared_at}`);
+}
+
 async function cmdReset(args: string[]) {
   const target = args[0];
   const result = await reset(target);
@@ -716,6 +762,10 @@ ${bold('Commands:')}
   broadcast --chain <c> <tx>  Send signed tx to RPC endpoint
   rpc                Show configured RPC endpoints
   rpc set-url <c> <url>  Set RPC endpoint for a chain
+  runtime [show]     Show self-declared LLM runtime (provider/model/harness)
+  runtime set <provider> <model> <harness>
+                     Set self-declared LLM runtime (injected at commit time)
+  runtime unset      Clear runtime
   auth set <dom> --provider <p> --account <a>
                      Configure OAuth auth for a branch
   auth show [dom]    Show auth config for branch(es)
