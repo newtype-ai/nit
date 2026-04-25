@@ -21,6 +21,7 @@ import { hostname, platform, arch } from 'node:os';
 import { assertAgentCardShape, type AgentCard, type PushResult } from './types.js';
 import { loadAgentId, signMessage, signChallenge } from './identity.js';
 import { version } from './update-check.js';
+import { validateBranchName, validateHttpUrl } from './validation.js';
 
 // Client-declared signals (server stores but treats as untrusted)
 const platformSignal = `${platform()}-${arch()}`;
@@ -87,6 +88,8 @@ export async function pushBranch(
   commitHash: string,
   machineHash?: string | null,
 ): Promise<PushResult> {
+  validateBranchName(branch);
+  validateHttpUrl(apiBase, 'Remote URL');
   const path = `/agent-card/branches/${encodeURIComponent(branch)}`;
   const bodyObj: Record<string, string> = { card_json: cardJson, commit_hash: commitHash };
   if (machineHash) bodyObj.machine_hash = machineHash;
@@ -154,6 +157,7 @@ export async function listRemoteBranches(
   nitDir: string,
   apiBase: string,
 ): Promise<string[]> {
+  validateHttpUrl(apiBase, 'Remote URL');
   const path = '/agent-card/branches';
   const authHeaders = await buildAuthHeaders(nitDir, 'GET', path);
 
@@ -179,6 +183,8 @@ export async function deleteRemoteBranch(
   apiBase: string,
   branch: string,
 ): Promise<boolean> {
+  validateBranchName(branch);
+  validateHttpUrl(apiBase, 'Remote URL');
   const path = `/agent-card/branches/${encodeURIComponent(branch)}`;
   const authHeaders = await buildAuthHeaders(nitDir, 'DELETE', path);
 
@@ -187,7 +193,12 @@ export async function deleteRemoteBranch(
     headers: authHeaders,
   });
 
-  return res.ok;
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Failed to delete remote branch "${branch}": HTTP ${res.status}: ${text}`);
+  }
+
+  return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -212,6 +223,8 @@ export async function fetchBranchCard(
   branch: string,
   nitDir?: string,
 ): Promise<AgentCard> {
+  validateBranchName(branch);
+  validateHttpUrl(cardUrl, 'Card URL');
   const baseUrl = cardUrl.replace(/\/$/, '');
   let url = `${baseUrl}/.well-known/agent-card.json`;
 

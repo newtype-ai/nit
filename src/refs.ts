@@ -7,8 +7,48 @@
 // ---------------------------------------------------------------------------
 
 import { promises as fs } from 'node:fs';
-import { join } from 'node:path';
+import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import type { NitBranch, NitHead } from './types.js';
+import { validateBranchName, validateObjectHash, validateRemoteName } from './validation.js';
+
+function assertInside(baseDir: string, targetPath: string): void {
+  const rel = relative(baseDir, targetPath);
+  if (rel === '..' || rel.startsWith(`..${sep}`) || isAbsolute(rel)) {
+    throw new Error(`Ref path escapes ${baseDir}`);
+  }
+}
+
+function isNotFound(err: unknown): boolean {
+  return (err as NodeJS.ErrnoException).code === 'ENOENT';
+}
+
+function headsDir(nitDir: string): string {
+  return resolve(nitDir, 'refs', 'heads');
+}
+
+function branchRefPath(nitDir: string, branch: string): string {
+  validateBranchName(branch);
+  const base = headsDir(nitDir);
+  const file = resolve(base, branch);
+  assertInside(base, file);
+  return file;
+}
+
+function remoteRefDir(nitDir: string, remote: string): string {
+  validateRemoteName(remote);
+  const base = resolve(nitDir, 'refs', 'remote');
+  const dir = resolve(base, remote);
+  assertInside(base, dir);
+  return dir;
+}
+
+function remoteRefPath(nitDir: string, remote: string, branch: string): string {
+  validateBranchName(branch);
+  const base = remoteRefDir(nitDir, remote);
+  const file = resolve(base, branch);
+  assertInside(base, file);
+  return file;
+}
 
 /**
  * Parse the HEAD file and return its contents.
@@ -33,14 +73,22 @@ export async function getHead(nitDir: string): Promise<NitHead> {
  */
 export async function resolveHead(nitDir: string): Promise<string> {
   const head = await getHead(nitDir);
-  const refPath = join(nitDir, head.ref);
+  const prefix = 'refs/heads/';
+  if (!head.ref.startsWith(prefix)) {
+    throw new Error(`HEAD ref has unexpected format: ${head.ref}`);
+  }
+  const refPath = branchRefPath(nitDir, head.ref.slice(prefix.length));
+  let hash: string;
   try {
-    return (await fs.readFile(refPath, 'utf-8')).trim();
-  } catch {
+    hash = (await fs.readFile(refPath, 'utf-8')).trim();
+  } catch (err) {
+    if (!isNotFound(err)) throw err;
     throw new Error(
       `Branch ref ${head.ref} does not exist. Workspace may be empty.`,
     );
   }
+  validateObjectHash(hash, `Branch ref ${head.ref}`);
+  return hash;
 }
 
 /**
@@ -53,7 +101,9 @@ export async function getCurrentBranch(nitDir: string): Promise<string> {
   if (!head.ref.startsWith(prefix)) {
     throw new Error(`HEAD ref has unexpected format: ${head.ref}`);
   }
-  return head.ref.slice(prefix.length);
+  const branch = head.ref.slice(prefix.length);
+  validateBranchName(branch);
+  return branch;
 }
 
 /**
@@ -64,8 +114,9 @@ export async function setBranch(
   branch: string,
   commitHash: string,
 ): Promise<void> {
-  const refPath = join(nitDir, 'refs', 'heads', branch);
-  await fs.mkdir(join(nitDir, 'refs', 'heads'), { recursive: true });
+  validateObjectHash(commitHash, 'Commit hash');
+  const refPath = branchRefPath(nitDir, branch);
+  await fs.mkdir(headsDir(nitDir), { recursive: true });
   await fs.writeFile(refPath, commitHash + '\n', 'utf-8');
 }
 
@@ -76,33 +127,53 @@ export async function getBranch(
   nitDir: string,
   branch: string,
 ): Promise<string | null> {
-  const refPath = join(nitDir, 'refs', 'heads', branch);
+  const refPath = branchRefPath(nitDir, branch);
+  let hash: string;
   try {
-    return (await fs.readFile(refPath, 'utf-8')).trim();
-  } catch {
+    hash = (await fs.readFile(refPath, 'utf-8')).trim();
+  } catch (err) {
+    if (!isNotFound(err)) throw err;
     return null;
   }
+  validateObjectHash(hash, `Branch "${branch}"`);
+  return hash;
 }
 
 /**
  * List all local branches with their commit hashes.
  */
 export async function listBranches(nitDir: string): Promise<NitBranch[]> {
-  const headsDir = join(nitDir, 'refs', 'heads');
+  const refsDir = headsDir(nitDir);
   const branches: NitBranch[] = [];
+  let entries: string[];
 
   try {
-    const entries = await fs.readdir(headsDir);
-    for (const name of entries) {
-      const refPath = join(headsDir, name);
-      const stat = await fs.stat(refPath);
-      if (stat.isFile()) {
-        const commitHash = (await fs.readFile(refPath, 'utf-8')).trim();
-        branches.push({ name, commitHash });
-      }
-    }
-  } catch {
+    entries = await fs.readdir(refsDir);
+  } catch (err) {
+    if (!isNotFound(err)) throw err;
     // refs/heads/ may not exist yet
+    return branches;
+  }
+
+  for (const name of entries) {
+    try {
+      validateBranchName(name);
+    } catch {
+      continue;
+    }
+    const refPath = branchRefPath(nitDir, name);
+    let stat;
+    try {
+      stat = await fs.stat(refPath);
+    } catch (err) {
+      if (!isNotFound(err)) throw err;
+      continue;
+    }
+    if (stat.isFile()) {
+      const commitHash = (await fs.readFile(refPath, 'utf-8')).trim();
+      validateObjectHash(commitHash, `Branch "${name}"`);
+      branches.push({ name, commitHash });
+    }
   }
 
   return branches.sort((a, b) => a.name.localeCompare(b.name));
@@ -112,7 +183,7 @@ export async function listBranches(nitDir: string): Promise<NitBranch[]> {
  * Delete a local branch ref.
  */
 export async function deleteBranch(nitDir: string, branch: string): Promise<void> {
-  const refPath = join(nitDir, 'refs', 'heads', branch);
+  const refPath = branchRefPath(nitDir, branch);
   await fs.unlink(refPath);
 }
 
@@ -124,9 +195,11 @@ export async function deleteRemoteRef(
   remote: string,
   branch: string,
 ): Promise<void> {
+  const refPath = remoteRefPath(nitDir, remote, branch);
   try {
-    await fs.unlink(join(nitDir, 'refs', 'remote', remote, branch));
-  } catch {
+    await fs.unlink(refPath);
+  } catch (err) {
+    if (!isNotFound(err)) throw err;
     // May not exist
   }
 }
@@ -135,6 +208,7 @@ export async function deleteRemoteRef(
  * Point HEAD at the given branch (symbolic ref).
  */
 export async function setHead(nitDir: string, branch: string): Promise<void> {
+  validateBranchName(branch);
   const headPath = join(nitDir, 'HEAD');
   await fs.writeFile(headPath, `ref: refs/heads/${branch}\n`, 'utf-8');
 }
@@ -148,9 +222,10 @@ export async function setRemoteRef(
   branch: string,
   commitHash: string,
 ): Promise<void> {
-  const dir = join(nitDir, 'refs', 'remote', remote);
+  validateObjectHash(commitHash, 'Commit hash');
+  const dir = remoteRefDir(nitDir, remote);
   await fs.mkdir(dir, { recursive: true });
-  await fs.writeFile(join(dir, branch), commitHash + '\n', 'utf-8');
+  await fs.writeFile(remoteRefPath(nitDir, remote, branch), commitHash + '\n', 'utf-8');
 }
 
 /**
@@ -161,10 +236,14 @@ export async function getRemoteRef(
   remote: string,
   branch: string,
 ): Promise<string | null> {
-  const refPath = join(nitDir, 'refs', 'remote', remote, branch);
+  const refPath = remoteRefPath(nitDir, remote, branch);
+  let hash: string;
   try {
-    return (await fs.readFile(refPath, 'utf-8')).trim();
-  } catch {
+    hash = (await fs.readFile(refPath, 'utf-8')).trim();
+  } catch (err) {
+    if (!isNotFound(err)) throw err;
     return null;
   }
+  validateObjectHash(hash, `Remote ref ${remote}/${branch}`);
+  return hash;
 }

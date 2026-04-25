@@ -5,7 +5,7 @@
 // Never throws — returns null on any failure.
 // ---------------------------------------------------------------------------
 
-import { execSync, execFileSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { readFile, writeFile } from 'node:fs/promises';
@@ -40,6 +40,10 @@ function isNewer(latest: string, current: string): boolean {
     if ((a[i] ?? 0) < (b[i] ?? 0)) return false;
   }
   return false;
+}
+
+function isPlainSemver(version: string): boolean {
+  return /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(version);
 }
 
 async function readCache(): Promise<Cache | null> {
@@ -111,16 +115,25 @@ export async function checkForUpdate(): Promise<{ current: string; latest: strin
  * current version).
  */
 export async function autoUpdate(): Promise<void> {
+  if (process.env.NIT_NO_AUTO_UPDATE === '1' || process.env.CI === 'true' || process.env.CI === '1') {
+    return;
+  }
+
   const update = await checkForUpdate().catch(() => null);
   if (!update) return;
 
   const { current, latest } = update;
-  process.stderr.write(`nit: updating ${current} → ${latest} — https://github.com/newtype-ai/nit/releases/tag/v${latest}\n`);
+  if (!isPlainSemver(latest)) {
+    process.stderr.write(`nit: skipped auto-update for invalid npm version "${latest}"\n`);
+    return;
+  }
+
+  process.stderr.write(`nit: updating ${current} -> ${latest} - https://github.com/newtype-ai/nit/releases/tag/v${latest}\n`);
 
   try {
     // TODO: Verify npm provenance/signatures before installing
     // See: https://docs.npmjs.com/generating-provenance-statements
-    execSync(`npm install -g @newtype-ai/nit@${latest}`, {
+    execFileSync('npm', ['install', '-g', `@newtype-ai/nit@${latest}`], {
       stdio: ['ignore', 'ignore', 'pipe'],
       timeout: 30_000,
     });

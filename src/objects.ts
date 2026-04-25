@@ -7,6 +7,7 @@ import { createHash } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
 import type { NitCommit } from './types.js';
+import { validateObjectHash } from './validation.js';
 
 /**
  * Compute a SHA-256 hash for an object without writing it to disk.
@@ -53,6 +54,7 @@ export async function writeObject(
  * Read the raw content of an object by its hash.
  */
 export async function readObject(nitDir: string, hash: string): Promise<string> {
+  validateObjectHash(hash);
   const file = join(nitDir, 'objects', hash.slice(0, 2), hash.slice(2));
   try {
     return await fs.readFile(file, 'utf-8');
@@ -65,6 +67,7 @@ export async function readObject(nitDir: string, hash: string): Promise<string> 
  * Check whether an object exists in the store.
  */
 export async function objectExists(nitDir: string, hash: string): Promise<boolean> {
+  validateObjectHash(hash);
   const file = join(nitDir, 'objects', hash.slice(0, 2), hash.slice(2));
   try {
     await fs.access(file);
@@ -102,6 +105,7 @@ export function serializeCommit(
  * Parse the raw text of a commit object back into a NitCommit.
  */
 export function parseCommit(hash: string, raw: string): NitCommit {
+  validateObjectHash(hash, 'Commit hash');
   const lines = raw.split('\n');
   let card = '';
   let parent: string | null = null;
@@ -132,6 +136,10 @@ export function parseCommit(hash: string, raw: string): NitCommit {
 
   if (!card) {
     throw new Error(`Malformed commit object ${hash}: missing card hash`);
+  }
+  validateObjectHash(card, `Malformed commit object ${hash}: card hash`);
+  if (parent !== null) {
+    validateObjectHash(parent, `Malformed commit object ${hash}: parent hash`);
   }
 
   const message =

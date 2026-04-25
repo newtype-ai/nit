@@ -14,18 +14,14 @@
 import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
 import type { AgentRuntime, NitConfig, NitRemoteConfig, NitRpcConfig } from './types.js';
+import {
+  validateConfigValue,
+  validateHttpUrl,
+  validateRemoteName,
+  validateRpcChainName,
+} from './validation.js';
 
 const CONFIG_FILE = 'config';
-
-/**
- * Validate that a URL uses a safe scheme (http or https only).
- * Prevents file://, javascript:, and other dangerous URL schemes.
- */
-function validateHttpUrl(url: string, label: string): void {
-  if (!/^https?:\/\//i.test(url)) {
-    throw new Error(`${label} must use http:// or https://`);
-  }
-}
 
 /**
  * Read and parse the .nit/config file.
@@ -62,6 +58,7 @@ export async function getRemoteCredential(
   nitDir: string,
   remoteName: string,
 ): Promise<string | null> {
+  validateRemoteName(remoteName);
   const config = await readConfig(nitDir);
   return config.remotes[remoteName]?.credential ?? null;
 }
@@ -74,6 +71,8 @@ export async function setRemoteCredential(
   remoteName: string,
   credential: string,
 ): Promise<void> {
+  validateRemoteName(remoteName);
+  validateConfigValue(credential, 'Remote credential');
   const config = await readConfig(nitDir);
 
   if (!config.remotes[remoteName]) {
@@ -91,6 +90,7 @@ export async function getRemoteUrl(
   nitDir: string,
   remoteName: string,
 ): Promise<string | null> {
+  validateRemoteName(remoteName);
   const config = await readConfig(nitDir);
   return config.remotes[remoteName]?.url ?? null;
 }
@@ -103,6 +103,7 @@ export async function setRemoteUrl(
   remoteName: string,
   url: string,
 ): Promise<void> {
+  validateRemoteName(remoteName);
   validateHttpUrl(url, 'Remote URL');
   const config = await readConfig(nitDir);
 
@@ -131,6 +132,7 @@ export async function setSkillsDir(
   nitDir: string,
   dir: string,
 ): Promise<void> {
+  validateConfigValue(dir, 'Skills directory');
   const config = await readConfig(nitDir);
   config.skillsDir = dir;
   await writeConfig(nitDir, config);
@@ -143,6 +145,7 @@ export async function getRpcUrl(
   nitDir: string,
   chain: string,
 ): Promise<string | null> {
+  validateRpcChainName(chain);
   const config = await readConfig(nitDir);
   return config.rpc?.[chain]?.url ?? null;
 }
@@ -155,6 +158,7 @@ export async function setRpcUrl(
   chain: string,
   url: string,
 ): Promise<void> {
+  validateRpcChainName(chain);
   validateHttpUrl(url, 'RPC URL');
   const config = await readConfig(nitDir);
 
@@ -177,6 +181,7 @@ function validateRuntimeField(value: string, label: string): void {
   if (typeof value !== 'string' || value.length === 0) {
     throw new Error(`${label} must be a non-empty string`);
   }
+  validateConfigValue(value, label);
   if (value.length > MAX_RUNTIME_FIELD_LEN) {
     throw new Error(`${label} must be at most ${MAX_RUNTIME_FIELD_LEN} characters`);
   }
@@ -333,11 +338,14 @@ function serializeConfig(config: NitConfig): string {
   const lines: string[] = [];
 
   for (const [name, remote] of Object.entries(config.remotes)) {
+    validateRemoteName(name);
     lines.push(`[remote "${name}"]`);
     if (remote.url) {
+      validateHttpUrl(remote.url, `Remote URL for "${name}"`);
       lines.push(`  url = ${remote.url}`);
     }
     if (remote.credential) {
+      validateConfigValue(remote.credential, `Remote credential for "${name}"`);
       lines.push(`  credential = ${remote.credential}`);
     }
     lines.push('');
@@ -345,6 +353,8 @@ function serializeConfig(config: NitConfig): string {
 
   if (config.rpc) {
     for (const [chain, rpcConfig] of Object.entries(config.rpc)) {
+      validateRpcChainName(chain);
+      validateHttpUrl(rpcConfig.url, `RPC URL for "${chain}"`);
       lines.push(`[rpc "${chain}"]`);
       lines.push(`  url = ${rpcConfig.url}`);
       lines.push('');
@@ -352,12 +362,22 @@ function serializeConfig(config: NitConfig): string {
   }
 
   if (config.skillsDir) {
+    validateConfigValue(config.skillsDir, 'Skills directory');
     lines.push('[skills]');
     lines.push(`  dir = ${config.skillsDir}`);
     lines.push('');
   }
 
   if (config.runtime) {
+    validateRuntimeField(config.runtime.provider, 'runtime.provider');
+    validateRuntimeField(config.runtime.model, 'runtime.model');
+    validateRuntimeField(config.runtime.harness, 'runtime.harness');
+    if (!PROVIDER_RE.test(config.runtime.provider)) {
+      throw new Error('runtime.provider must contain only lowercase letters, digits, and hyphens');
+    }
+    if (!Number.isFinite(config.runtime.declared_at)) {
+      throw new Error('runtime.declared_at must be a finite number');
+    }
     lines.push('[runtime]');
     lines.push(`  provider = ${config.runtime.provider}`);
     lines.push(`  model = ${config.runtime.model}`);

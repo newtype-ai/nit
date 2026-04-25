@@ -34,11 +34,13 @@ export function diffCards(oldCard: AgentCard, newCard: AgentCard): DiffResult {
     }
   }
 
-  // Provider (nested object)
-  const oldProvider = JSON.stringify(oldCard.provider ?? null);
-  const newProvider = JSON.stringify(newCard.provider ?? null);
-  if (oldProvider !== newProvider) {
-    fields.push({ field: 'provider', old: oldCard.provider, new: newCard.provider });
+  // Nested object fields
+  for (const field of ['provider', 'wallet', 'runtime'] as const) {
+    const oldNested = JSON.stringify(oldCard[field] ?? null);
+    const newNested = JSON.stringify(newCard[field] ?? null);
+    if (oldNested !== newNested) {
+      fields.push({ field, old: oldCard[field], new: newCard[field] });
+    }
   }
 
   // Array fields (order-sensitive comparison)

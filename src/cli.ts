@@ -47,10 +47,12 @@ const red = (s: string) => `\x1b[31m${s}\x1b[0m`;
 const dim = (s: string) => `\x1b[2m${s}\x1b[0m`;
 
 async function main() {
-  // Auto-update before running any command (CLI only, never library)
-  await autoUpdate();
-
   const [, , command, ...args] = process.argv;
+  const skipUpdateCommands = new Set(['help', '--help', '-h', '--version', '-v', undefined]);
+  if (!skipUpdateCommands.has(command)) {
+    // Auto-update before running mutating/network commands (CLI only, never library)
+    await autoUpdate();
+  }
 
   try {
     switch (command) {
@@ -323,13 +325,19 @@ async function cmdCheckout(args: string[]) {
 async function cmdPush(args: string[]) {
   const all = args.includes('--all');
   const results = await push({ all });
+  let failed = false;
 
   for (const r of results) {
     if (r.success) {
       console.log(`${green('✓')} ${r.branch} → ${r.remoteUrl}`);
     } else {
+      failed = true;
       console.log(`${red('✗')} ${r.branch}: ${r.error}`);
     }
+  }
+
+  if (failed) {
+    process.exit(1);
   }
 }
 
@@ -564,11 +572,17 @@ async function cmdPull(args: string[]) {
   const results = await pull({ all });
 
   for (const r of results) {
-    if (r.updated) {
+    if (r.error) {
+      console.log(`${red('✗')} ${r.branch}: ${r.error}`);
+    } else if (r.updated) {
       console.log(`${green('✓')} ${r.branch} ← ${dim(r.commitHash.slice(0, 8))}`);
     } else {
       console.log(`${dim('—')} ${r.branch} ${dim('(up to date)')}`);
     }
+  }
+
+  if (results.some((r) => r.error)) {
+    process.exit(1);
   }
 }
 

@@ -66,6 +66,7 @@ import {
   writeConfig,
   getRemoteUrl,
   getSkillsDir,
+  setRemoteUrl as configSetRemoteUrl,
   setRpcUrl as configSetRpcUrl,
   setRuntime as configSetRuntime,
   getRuntime as configGetRuntime,
@@ -73,6 +74,12 @@ import {
 } from './config.js';
 import { signTx as txSignTx, broadcast as txBroadcast } from './tx.js';
 import { getMachineId, computeMachineHash, saveMachineHash, loadMachineHash } from './fingerprint.js';
+import {
+  validateBranchName,
+  validateHttpUrl,
+  validateRemoteName,
+  validateRpcChainName,
+} from './validation.js';
 
 // Re-export types and runtime validators for consumers
 export { assertAgentCardShape } from './types.js';
@@ -133,31 +140,16 @@ const CARD_FILE = 'agent-card.json';
 const DEFAULT_API_BASE = 'https://api.newtype-ai.org';
 const CURRENT_PROTOCOL_VERSION = '0.3.0';
 
-/**
- * Validate a branch name for safety and consistency.
- * Branch names become filesystem path components (refs/heads/{name}),
- * so we reject traversal sequences and restrict to domain-safe characters.
- */
-function validateBranchName(name: string): void {
-  if (!name) {
-    throw new Error('Branch name cannot be empty.');
+function defaultCardUrl(agentId: string): string {
+  return `https://agent-${agentId}.newtype-ai.org`;
+}
+
+function cardReadBaseUrl(apiBase: string, agentId: string): string {
+  const normalized = apiBase.replace(/\/$/, '');
+  if (normalized === DEFAULT_API_BASE) {
+    return defaultCardUrl(agentId);
   }
-  if (name.length > 253) {
-    throw new Error('Branch name cannot exceed 253 characters.');
-  }
-  if (/[\x00-\x1f\x7f]/.test(name)) {
-    throw new Error(`Branch name contains control characters: "${name}".`);
-  }
-  if (/[:/\\]/.test(name) || name.includes('..')) {
-    throw new Error(
-      `Branch name "${name}" contains unsafe characters. Avoid : / \\ and ..`,
-    );
-  }
-  if (!/^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$/.test(name)) {
-    throw new Error(
-      `Branch name "${name}" is invalid. Use letters, digits, dots, hyphens; must start and end with alphanumeric.`,
-    );
-  }
+  return normalized;
 }
 
 /**
@@ -297,6 +289,7 @@ export async function init(options?: {
 }): Promise<InitResult> {
   const projDir = resolve(options?.projectDir || process.cwd());
   const nitDir = join(projDir, NIT_DIR);
+  const cardPath = join(projDir, CARD_FILE);
 
   // Check if already initialized
   try {
@@ -305,6 +298,30 @@ export async function init(options?: {
   } catch (err) {
     if (err instanceof Error && err.message.startsWith('Already')) throw err;
     // Does not exist — good, proceed
+  }
+
+  // Read an existing card before creating .nit/. Malformed files should fail
+  // without silently replacing user data or leaving a half-initialized identity.
+  let existingCard: AgentCard | null = null;
+  let discoveredSkills: Awaited<ReturnType<typeof discoverSkills>> | null = null;
+  try {
+    const raw = await fs.readFile(cardPath, 'utf-8');
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      throw new Error(`Invalid ${CARD_FILE}: ${msg}`);
+    }
+    assertAgentCardShape(parsed);
+    validateAndFillCard(parsed);
+    existingCard = parsed;
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code !== 'ENOENT') {
+      throw err;
+    }
+    discoveredSkills = await discoverSkills(projDir);
   }
 
   // Create directory structure
@@ -321,19 +338,15 @@ export async function init(options?: {
   await saveAgentId(nitDir, agentId);
 
   // Read or create agent-card.json
-  const cardPath = join(projDir, CARD_FILE);
   let card: AgentCard;
   let skillsFound: string[] = [];
 
-  try {
-    const raw = await fs.readFile(cardPath, 'utf-8');
-    card = JSON.parse(raw) as AgentCard;
-    // Inject publicKey
+  if (existingCard) {
+    card = existingCard;
     card.publicKey = publicKeyField;
-    skillsFound = card.skills.map((s) => s.id);
-  } catch {
+  } else {
     // No existing card — create one from discovered skills
-    const discovered = await discoverSkills(projDir);
+    const discovered = discoveredSkills ?? await discoverSkills(projDir);
     skillsFound = discovered.map((s) => s.id);
 
     card = {
@@ -355,12 +368,15 @@ export async function init(options?: {
 
   // Set card URL if not already specified
   if (!card.url) {
-    card.url = `https://agent-${agentId}.newtype-ai.org`;
+    card.url = defaultCardUrl(agentId);
   }
 
   // Inject wallet addresses
   const walletAddresses = await getWalletAddresses(nitDir);
   card.wallet = { solana: walletAddresses.solana, evm: walletAddresses.ethereum };
+
+  validateAndFillCard(card);
+  skillsFound = card.skills.map((s) => s.id);
 
   // Compute and store machine fingerprint
   const machineId = getMachineId();
@@ -429,7 +445,7 @@ export async function status(options?: {
   const publicKey = formatPublicKeyField(pubBase64);
   const agentId = await loadAgentId(nitDir);
   const workingCard = await readWorkingCard(nitDir);
-  const cardUrl = workingCard.url || `https://agent-${agentId}.newtype-ai.org`;
+  const cardUrl = workingCard.url || defaultCardUrl(agentId);
 
   // Check uncommitted changes
   let uncommittedChanges: DiffResult | null = null;
@@ -534,6 +550,7 @@ export async function loginPayload(
   let nitDir: string;
   let autoInitialized = false;
   let autoPushed = false;
+  validateBranchName(domain);
 
   try {
     nitDir = findNitDir(options?.projectDir);
@@ -544,7 +561,12 @@ export async function loginPayload(
     autoInitialized = true;
 
     // Auto-push main (TOFU registration) — needed for server verification
-    await push(options);
+    const pushResults = await push(options);
+    const failed = pushResults.filter((r) => !r.success);
+    if (failed.length > 0) {
+      const details = failed.map((r) => `${r.branch}: ${r.error ?? 'push failed'}`).join('; ');
+      throw new Error(`Auto-push failed after init: ${details}`);
+    }
     autoPushed = true;
   }
 
@@ -553,7 +575,6 @@ export async function loginPayload(
   let createdSkill: string | undefined;
   const currentBranch = await getCurrentBranch(nitDir);
   if (currentBranch !== domain) {
-    validateBranchName(domain);
     const isNew = !(await getBranch(nitDir, domain));
     if (isNew) {
       const headHash = await resolveHead(nitDir);
@@ -615,7 +636,7 @@ export async function commit(
 
   // Enforce card URL from agent ID
   const agentId = await loadAgentId(nitDir);
-  card.url = `https://agent-${agentId}.newtype-ai.org`;
+  card.url = defaultCardUrl(agentId);
 
   // Inject self-declared runtime if configured
   const runtime = await configGetRuntime(nitDir);
@@ -781,6 +802,7 @@ export async function branchDelete(
   name: string,
   options?: { projectDir?: string; remote?: boolean },
 ): Promise<void> {
+  validateBranchName(name);
   const nitDir = findNitDir(options?.projectDir);
 
   if (name === 'main') {
@@ -797,17 +819,18 @@ export async function branchDelete(
     throw new Error(`Branch '${name}' does not exist.`);
   }
 
-  // Delete local ref
-  await deleteLocalBranch(nitDir, name);
-
-  // Clean up remote-tracking ref
-  await deleteRemoteRef(nitDir, 'origin', name);
-
   // Delete from remote server if requested
   if (options?.remote) {
     const apiBase = (await getRemoteUrl(nitDir, 'origin')) || DEFAULT_API_BASE;
     await deleteRemoteBranch(nitDir, apiBase, name);
   }
+
+  // Delete local ref after remote delete succeeds, so -D is not partially
+  // destructive when the server rejects or cannot process the request.
+  await deleteLocalBranch(nitDir, name);
+
+  // Clean up remote-tracking ref
+  await deleteRemoteRef(nitDir, 'origin', name);
 }
 
 // ---------------------------------------------------------------------------
@@ -878,6 +901,7 @@ export async function push(options?: {
 }): Promise<PushResult[]> {
   const nitDir = findNitDir(options?.projectDir);
   const remoteName = options?.remoteName || 'origin';
+  validateRemoteName(remoteName);
   const apiBase = (await getRemoteUrl(nitDir, remoteName)) || DEFAULT_API_BASE;
   const branches = await listAllBranches(nitDir);
   const currentBranch = await getCurrentBranch(nitDir);
@@ -956,6 +980,8 @@ export async function remoteAdd(
   url: string,
   options?: { projectDir?: string },
 ): Promise<void> {
+  validateRemoteName(name);
+  validateHttpUrl(url, 'Remote URL');
   const nitDir = findNitDir(options?.projectDir);
   const config = await readConfig(nitDir);
   if (config.remotes[name]) {
@@ -975,6 +1001,8 @@ export async function remoteSetUrl(
   url: string,
   options?: { projectDir?: string },
 ): Promise<void> {
+  validateRemoteName(name);
+  validateHttpUrl(url, 'Remote URL');
   const nitDir = findNitDir(options?.projectDir);
   const config = await readConfig(nitDir);
   if (!config.remotes[name]) {
@@ -982,8 +1010,7 @@ export async function remoteSetUrl(
       `Remote "${name}" does not exist. Use 'nit remote add ${name} <url>' to create it.`,
     );
   }
-  config.remotes[name].url = url;
-  await writeConfig(nitDir, config);
+  await configSetRemoteUrl(nitDir, name, url);
 }
 
 // ---------------------------------------------------------------------------
@@ -1026,6 +1053,7 @@ export async function rpcSetUrl(
   options?: { projectDir?: string },
 ): Promise<void> {
   const nitDir = findNitDir(options?.projectDir);
+  validateRpcChainName(chain);
   await configSetRpcUrl(nitDir, chain, url);
 }
 
@@ -1178,6 +1206,7 @@ export interface PullResult {
   branch: string;
   commitHash: string;
   updated: boolean;
+  error?: string;
 }
 
 /**
@@ -1196,6 +1225,7 @@ export async function pull(options?: {
 }): Promise<PullResult[]> {
   const nitDir = findNitDir(options?.projectDir);
   const remoteName = options?.remoteName || 'origin';
+  validateRemoteName(remoteName);
   const apiBase = (await getRemoteUrl(nitDir, remoteName)) || DEFAULT_API_BASE;
   const currentBranch = await getCurrentBranch(nitDir);
   const agentId = await loadAgentId(nitDir);
@@ -1210,7 +1240,7 @@ export async function pull(options?: {
     try {
       // Fetch card from remote — fetchBranchCard(cardUrl, branch, nitDir?)
       const { fetchBranchCard } = await import('./remote.js');
-      const cardUrl = `${apiBase}/agent-card/${agentId}`;
+      const cardUrl = cardReadBaseUrl(apiBase, agentId);
       const remoteCard = await fetchBranchCard(cardUrl, b.name, nitDir);
 
       // Write card to object store
@@ -1251,7 +1281,7 @@ export async function pull(options?: {
       results.push({ branch: b.name, commitHash, updated: true });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      results.push({ branch: b.name, commitHash: '', updated: false });
+      results.push({ branch: b.name, commitHash: '', updated: false, error: msg });
     }
   }
 
@@ -1294,6 +1324,7 @@ export async function authSet(
   account: string,
   options?: { projectDir?: string },
 ): Promise<AuthSetResult> {
+  validateBranchName(domain);
   const nitDir = findNitDir(options?.projectDir);
   const projDir = projectDir(nitDir);
 
@@ -1358,5 +1389,3 @@ export async function authShow(
 
   return results;
 }
-
-
