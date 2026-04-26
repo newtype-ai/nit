@@ -52,6 +52,68 @@ test('remote set-url rejects non-http URLs', () => {
   assert.equal(readFileSync(join(cwd, '.nit', 'config'), 'utf8').includes('file:///tmp/not-http'), false);
 });
 
+test('remote add rejects unsafe names before writing config', () => {
+  const cwd = workspace('nit-remote-add-');
+  initWorkspace(cwd);
+
+  const configPath = join(cwd, '.nit', 'config');
+  const before = readFileSync(configPath, 'utf8');
+  const result = runNit(cwd, ['remote', 'add', '../../config', 'https://example.com']);
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /unsafe characters|invalid/i);
+  assert.equal(readFileSync(configPath, 'utf8'), before);
+});
+
+test('rpc set-url rejects unsafe chain names and non-http URLs', () => {
+  const cwd = workspace('nit-rpc-');
+  initWorkspace(cwd);
+
+  const configPath = join(cwd, '.nit', 'config');
+  const before = readFileSync(configPath, 'utf8');
+
+  const unsafeChain = runNit(cwd, ['rpc', 'set-url', '../evm', 'https://rpc.example']);
+  assert.notEqual(unsafeChain.status, 0);
+  assert.match(unsafeChain.stderr, /unsafe characters|invalid/i);
+
+  const unsafeUrl = runNit(cwd, ['rpc', 'set-url', 'evm', 'file:///tmp/socket']);
+  assert.notEqual(unsafeUrl.status, 0);
+  assert.match(unsafeUrl.stderr, /http:\/\/ or https:\/\//);
+  assert.equal(readFileSync(configPath, 'utf8'), before);
+});
+
+test('auth set rejects unsafe domains and account control characters', () => {
+  const cwd = workspace('nit-auth-');
+  initWorkspace(cwd);
+
+  const configPath = join(cwd, '.nit', 'config');
+  const before = readFileSync(configPath, 'utf8');
+
+  const unsafeDomain = runNit(cwd, [
+    'auth',
+    'set',
+    '../../config',
+    '--provider',
+    'google',
+    '--account',
+    'agent@example.com',
+  ]);
+  assert.notEqual(unsafeDomain.status, 0);
+  assert.match(unsafeDomain.stderr, /unsafe characters|invalid/i);
+
+  const unsafeAccount = runNit(cwd, [
+    'auth',
+    'set',
+    'example.com',
+    '--provider',
+    'google',
+    '--account',
+    'agent@example.com\ninjected: true',
+  ]);
+  assert.notEqual(unsafeAccount.status, 0);
+  assert.match(unsafeAccount.stderr, /control characters/i);
+  assert.equal(readFileSync(configPath, 'utf8'), before);
+});
+
 test('init fails without overwriting malformed existing agent-card.json', () => {
   const cwd = workspace('nit-init-');
   const cardPath = join(cwd, 'agent-card.json');
@@ -149,4 +211,21 @@ test('diffCards detects wallet and runtime changes', async () => {
   const diff = diffCards(base, withInjectedFields);
   assert.equal(diff.changed, true);
   assert.deepEqual(diff.fields.map((field) => field.field).sort(), ['runtime', 'wallet']);
+});
+
+test('sign-tx rejects malformed hex before signing', () => {
+  const cwd = workspace('nit-sign-tx-');
+  initWorkspace(cwd);
+
+  const malformed = runNit(cwd, ['sign-tx', '--chain', 'solana', 'zz']);
+  assert.notEqual(malformed.status, 0);
+  assert.match(malformed.stderr, /valid hex/i);
+
+  const empty = runNit(cwd, ['sign-tx', '--chain', 'solana', '0x']);
+  assert.notEqual(empty.status, 0);
+  assert.match(empty.stderr, /cannot be empty/i);
+
+  const valid = runNit(cwd, ['sign-tx', '--chain', 'solana', '00']);
+  assert.equal(valid.status, 0, valid.stderr || valid.stdout);
+  assert.equal(JSON.parse(valid.stdout).chain, 'solana');
 });

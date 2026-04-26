@@ -18,6 +18,17 @@ import {
 } from './wallet.js';
 import { readConfig } from './config.js';
 
+function parseHexData(data: string): Buffer {
+  const hex = data.startsWith('0x') ? data.slice(2) : data;
+  if (hex.length === 0) {
+    throw new Error('Transaction data cannot be empty');
+  }
+  if (hex.length % 2 !== 0 || !/^[0-9a-fA-F]+$/.test(hex)) {
+    throw new Error('Transaction data must be valid hex');
+  }
+  return Buffer.from(hex, 'hex');
+}
+
 /**
  * Sign transaction data with the agent's identity-derived key.
  *
@@ -32,8 +43,7 @@ export async function signTx(
   chain: 'evm' | 'solana',
   data: string,
 ): Promise<SignTxResult> {
-  const hex = data.startsWith('0x') ? data.slice(2) : data;
-  const bytes = Buffer.from(hex, 'hex');
+  const bytes = parseHexData(data);
 
   if (chain === 'evm') {
     const result = await signEvmHash(nitDir, bytes);

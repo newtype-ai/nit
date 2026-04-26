@@ -299,12 +299,12 @@ nit discovers SKILL.md files across agent frameworks automatically.
 
 ## 11. Auto-Update
 
-The CLI keeps itself current without user intervention.
+The CLI keeps itself current without user intervention during normal command use.
 
-**Check:** Every CLI invocation queries `https://registry.npmjs.org/@newtype-ai/nit/latest` (3s timeout, cached 24h at `~/.nit-update-cache.json`).
+**Check:** Most CLI invocations query `https://registry.npmjs.org/@newtype-ai/nit/latest` (3s timeout, cached 24h at `~/.nit-update-cache.json`). Help/version commands skip the check, as do CI runs and sessions with `NIT_NO_AUTO_UPDATE=1`.
 
 **Update:** If newer version found:
-1. Print: `nit: updating 0.5.1 → 0.5.2 — https://github.com/newtype-ai/nit/releases/tag/v0.5.2`
+1. Print: `nit: updating 0.5.1 -> 0.5.2 - https://github.com/newtype-ai/nit/releases/tag/v0.5.2`
 2. Run: `npm install -g @newtype-ai/nit@${latest}` — version-pinned to the discovered version, not the mutable `@latest` tag (30s timeout)
 3. Re-exec: `execFileSync('nit', args)` (no shell) with inherited stdio — prevents shell metacharacter injection
 4. Exit with same code
@@ -321,9 +321,9 @@ nit validates data at two boundaries: **commit time** and **read time**.
 
 **Read-time shape validation (`assertAgentCardShape`):** Checks the structural shape of parsed agent-card.json whenever loaded — from disk (`readWorkingCard`) and from the server (`fetchBranchCard`). Validates: root must be a plain object; `name`, `description`, `url` must be strings if present; `skills` must be an array if present.
 
-**URL validation (`validateHttpUrl`):** Applied when setting remote URLs (`nit remote set-url`) and RPC URLs (`nit rpc set-url`). Rejects URLs not using `http://` or `https://` scheme.
+**URL validation (`validateHttpUrl`):** Applied when setting remote URLs (`nit remote add` / `nit remote set-url`) and RPC URLs (`nit rpc set-url`). Rejects URLs not using `http://` or `https://` scheme.
 
-**Branch name validation (`validateBranchName`):** Applied on branch creation, push, and delete. See Section 6 for rules.
+**Branch name validation (`validateBranchName`):** Applied on branch creation, checkout, push, pull, delete, auth, and login flows. See Section 6 for rules.
 
 ---
 

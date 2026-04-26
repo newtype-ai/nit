@@ -1,6 +1,6 @@
 {
   "name": "@newtype-ai/nit",
-  "version": "0.6.8",
+  "version": "0.6.9",
   "description": "Version control for agent cards",
   "type": "module",
   "bin": {
@@ -21,6 +21,7 @@
   "scripts": {
     "build": "tsup",
     "test": "npm run build && node --test tests/*.test.mjs",
+    "release:check": "bash scripts/release-check.sh",
     "prepublishOnly": "tsup",
     "postinstall": "node scripts/postinstall.js"
   },

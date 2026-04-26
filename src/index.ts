@@ -76,6 +76,7 @@ import { signTx as txSignTx, broadcast as txBroadcast } from './tx.js';
 import { getMachineId, computeMachineHash, saveMachineHash, loadMachineHash } from './fingerprint.js';
 import {
   validateBranchName,
+  validateConfigValue,
   validateHttpUrl,
   validateRemoteName,
   validateRpcChainName,
@@ -1325,6 +1326,13 @@ export async function authSet(
   options?: { projectDir?: string },
 ): Promise<AuthSetResult> {
   validateBranchName(domain);
+  if (!['google', 'github', 'x'].includes(provider)) {
+    throw new Error('Auth provider must be one of: google, github, x');
+  }
+  if (!account) {
+    throw new Error('Auth account cannot be empty');
+  }
+  validateConfigValue(account, 'Auth account');
   const nitDir = findNitDir(options?.projectDir);
   const projDir = projectDir(nitDir);
 
