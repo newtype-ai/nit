@@ -20,6 +20,8 @@ The agent creates its own identity with `nit init`. No server involved. The keyp
 
 Then `nit push` publishes the card to a hosted URL. Now anyone can discover the agent at `agent-{uuid}.newtype-ai.org`. And because the card is public and the agent holds the private key, it can **prove ownership with a simple signature** — no OAuth, no redirect, no human account.
 
+Newtype is the default hosted implementation, not part of the local trust root. `nit` creates and manages identity locally; any compatible remote can host pushed branches.
+
 ### Why This Becomes the Best Login for Agent Apps
 
 Most agent apps today use custom API keys tied to human accounts (email, X, Facebook). This is clunky for agents — they're not humans, they don't have email addresses, and being bound to a human's social account is a bad fit.
@@ -41,8 +43,8 @@ Apps won't adopt this because someone pitches them a protocol. They'll adopt it 
             │ push (Ed25519-signed)
             ▼
 ┌─────────────────────────┐
-│    Server API            │   api.newtype-ai.org
-│    Cloudflare Worker     │   apps/agent-cards/ (this repo)
+│    Remote API            │   default: api.newtype-ai.org
+│    Hosted implementation │   newtype-ai worker
 │    KV branch storage     │
 └───────────┬─────────────┘
             │ serves cards
@@ -59,7 +61,8 @@ Apps won't adopt this because someone pitches them a protocol. They'll adopt it 
 | Component | Location | Responsibility |
 |-----------|----------|---------------|
 | CLI + data model | `github.com/newtype-ai/nit` (standalone repo) | Local store, commits, branches, push client |
-| Server protocol | `apps/agent-cards/src/api/` (this repo) | KV storage, auth verification, card serving |
+| Remote protocol | Any compatible HTTP server | Branch storage, auth verification, card serving |
+| Default hosted remote | `github.com/newtype-ai/newtype-ai` | Newtype's public implementation of the protocol |
 | SDK | `github.com/newtype-ai/nit-sdk` (standalone repo) | High-level API for apps adopting nit |
 
 ---
@@ -259,7 +262,7 @@ No redirect flow. No consent screen. No shared secrets. The card is a public doc
 
 ## Server API Reference
 
-All endpoints are served at `api.newtype-ai.org`. Write operations require Ed25519 signature auth (see headers above).
+Newtype's hosted remote serves these endpoints at `api.newtype-ai.org`. Other compatible remotes can expose the same paths from their own API base URL. Write operations require Ed25519 signature auth (see headers above).
 
 ### `PUT /agent-card/branches/:branch`
 
@@ -287,7 +290,7 @@ Push a branch's card + commit hash.
 - For `main` branch, the `publicKey` field in the card is stored for future auth
 - TOFU only applies to `main` branch pushes
 
-> Branch names are validated: must match `/^[a-zA-Z0-9._-]+$/`, max 253 characters. Colons are forbidden because the server uses `{agent_id}:{branch}` as the KV key — a branch named `main:pubkey` or `identity` would overwrite internal metadata. Invalid names return `400`.
+> Branch names are validated with the same rules as local nit refs: alphanumeric start/end, letters, digits, dots, underscores, and hyphens; no `:`, `/`, `\`, or `..`; max 253 characters. Invalid names return `400`.
 
 ### `GET /agent-card/branches`
 
@@ -312,7 +315,7 @@ The `cursor` field is present only when more results exist. Internal KV keys (`:
 
 ### `DELETE /agent-card/branches/:branch`
 
-Remove a branch. Cannot delete `main`. Branch names are validated with the same rules as PUT (must match `/^[a-zA-Z0-9._-]+$/`, max 253 characters).
+Remove a branch. Cannot delete `main`. Branch names are validated with the same rules as PUT.
 
 **Response (200):**
 ```json
@@ -451,7 +454,7 @@ All commands run in a directory containing `agent-card.json` and `.nit/`.
 | `nit checkout <branch>` | Switch to a branch (auto-commits uncommitted changes, then restores that branch's card) |
 | `nit push [--all]` | Push current branch (or all branches) to remote |
 | `nit pull [--all]` | Pull current branch (or all branches) from remote, updating local refs and working card |
-| `nit doctor [--strict]` | Check local setup, remote health, latest npm version, and npm auth |
+| `nit doctor [--remote] [--publish] [--strict]` | Check local setup, optional configured remote health, and publish auth |
 | `nit reset [target]` | Restore `agent-card.json` from HEAD or a specific commit/branch. Does not move the branch pointer. |
 | `nit show [target]` | Show commit metadata (hash, author, date, message) and full card JSON for HEAD or a specific commit/branch |
 | `nit sign "message"` | Sign a message with the agent's Ed25519 private key, output base64 signature |

@@ -592,35 +592,14 @@ async function cmdPull(args: string[]) {
 
 async function cmdDoctor(args: string[]) {
   const strict = args.includes('--strict');
+  const checkRemote = args.includes('--remote') || args.includes('--all');
+  const checkPublish = args.includes('--publish') || args.includes('--all');
   const checks: Array<{ status: 'ok' | 'warn' | 'fail'; name: string; detail: string }> = [];
   const add = (status: 'ok' | 'warn' | 'fail', name: string, detail: string) => {
     checks.push({ status, name, detail });
   };
 
   add('ok', 'nit version', nitVersion);
-
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 3_000);
-    let res: Response;
-    try {
-      res = await fetch('https://registry.npmjs.org/@newtype-ai/nit/latest', {
-        signal: controller.signal,
-        headers: { accept: 'application/json' },
-      });
-    } finally {
-      clearTimeout(timeout);
-    }
-    if (res.ok) {
-      const data = (await res.json()) as { version?: string };
-      const latest = data.version ?? 'unknown';
-      add(latest === nitVersion ? 'ok' : 'warn', 'npm latest', latest);
-    } else {
-      add('warn', 'npm latest', `HTTP ${res.status}`);
-    }
-  } catch (err) {
-    add('warn', 'npm latest', err instanceof Error ? err.message : String(err));
-  }
 
   try {
     const s = await status();
@@ -632,36 +611,67 @@ async function cmdDoctor(args: string[]) {
   try {
     const info = await remote();
     add('ok', 'remote', info.url);
+
+    if (checkRemote) {
+      const healthUrl = new URL('/health', info.url).toString();
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 5_000);
+      let res: Response;
+      try {
+        res = await fetch(healthUrl, {
+          signal: controller.signal,
+          headers: { accept: 'application/json' },
+        });
+      } finally {
+        clearTimeout(timeout);
+      }
+
+      if (res.ok) {
+        add('ok', 'remote health', `${healthUrl} HTTP ${res.status}`);
+      } else if (res.status === 404) {
+        add('warn', 'remote health', `${healthUrl} returned 404; /health is optional`);
+      } else {
+        add('fail', 'remote health', `${healthUrl} HTTP ${res.status}`);
+      }
+    }
   } catch (err) {
     add('warn', 'remote', err instanceof Error ? err.message : String(err));
   }
 
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 5_000);
-    let res: Response;
+  if (checkPublish) {
     try {
-      res = await fetch('https://api.newtype-ai.org/health', {
-        signal: controller.signal,
-        headers: { accept: 'application/json' },
-      });
-    } finally {
-      clearTimeout(timeout);
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 3_000);
+      let res: Response;
+      try {
+        res = await fetch('https://registry.npmjs.org/@newtype-ai/nit/latest', {
+          signal: controller.signal,
+          headers: { accept: 'application/json' },
+        });
+      } finally {
+        clearTimeout(timeout);
+      }
+      if (res.ok) {
+        const data = (await res.json()) as { version?: string };
+        const latest = data.version ?? 'unknown';
+        add(latest === nitVersion ? 'ok' : 'warn', 'npm latest', latest);
+      } else {
+        add('warn', 'npm latest', `HTTP ${res.status}`);
+      }
+    } catch (err) {
+      add('warn', 'npm latest', err instanceof Error ? err.message : String(err));
     }
-    add(res.ok ? 'ok' : 'fail', 'newtype api', `HTTP ${res.status}`);
-  } catch (err) {
-    add('fail', 'newtype api', err instanceof Error ? err.message : String(err));
-  }
 
-  try {
-    const user = execFileSync('npm', ['whoami'], {
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore'],
-      timeout: 5_000,
-    }).trim();
-    add('ok', 'npm auth', user);
-  } catch {
-    add('warn', 'npm auth', 'not logged in; publish with NPM_TOKEN or npm login');
+    try {
+      const user = execFileSync('npm', ['whoami'], {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+        timeout: 5_000,
+      }).trim();
+      add('ok', 'npm auth', user);
+    } catch {
+      add('warn', 'npm auth', 'not logged in; publish with NPM_TOKEN or npm login');
+    }
   }
 
   console.log(bold('nit doctor'));
@@ -858,7 +868,8 @@ ${bold('Commands:')}
   checkout <branch>  Switch branch (overwrites agent-card.json)
   push [--all]       Push branch(es) to remote
   pull [--all]       Pull branch(es) from remote
-  doctor [--strict]  Check local setup, remote health, and npm auth
+  doctor [--remote] [--publish] [--strict]
+                     Check local setup, optional remote health, and publish auth
   reset [target]     Restore agent-card.json from HEAD or target
   show [target]      Show commit metadata and card content
   sign "message"     Sign a message with your Ed25519 key

@@ -89,9 +89,9 @@ Auto-discovers skills from major agent frameworks:
 - `.codex/skills/` — OpenAI Codex
 - `.openclaw/workspace/skills/` — OpenClaw
 
-### Configurable remote
+### Default hosted remote
 
-Free hosting at [newtype-ai.org](https://newtype-ai.org). Or bring your own server:
+`nit` is local-first and speaks an open remote protocol. Newtype is the default hosted remote for agents that want free hosting and verification without running infrastructure. You can point `origin` at any compatible server:
 
 ```bash
 nit remote set-url origin https://my-server.com
@@ -116,7 +116,7 @@ Pure Node.js builtins. No bloat.
 | `nit checkout <branch>` | Switch branch (auto-commits changes first) |
 | `nit push [--all]` | Push branch(es) to remote |
 | `nit pull [--all]` | Pull branch(es) from remote |
-| `nit doctor [--strict]` | Check local setup, remote health, and npm auth |
+| `nit doctor [--remote] [--publish] [--strict]` | Check local setup, optional remote health, and publish auth |
 | `nit reset [target]` | Restore agent-card.json from HEAD or target |
 | `nit show [target]` | Show commit metadata and card content |
 | `nit sign "msg"` | Sign a message with your Ed25519 key |
@@ -151,13 +151,13 @@ nit also derives chain-native addresses from your keypair — Solana (Ed25519 na
 
 ### Login
 
-When you log into an app, you sign a domain-bound payload with your private key. The app verifies it through the server's identity registry — no OAuth, no API keys, no human account.
+When you log into an app, you sign a domain-bound payload with your private key. The app can verify against your public card directly or use a compatible verification service — no OAuth, no API keys, no human account.
 
 `nit sign --login <domain>` does two things automatically:
 1. Switches to the domain's branch (creates it if it doesn't exist)
 2. Generates the signed login payload (includes `public_key` for transparency)
 
-The app sends the payload to `api.newtype-ai.org/agent-card/verify` with an optional `policy` (trust rules like `max_identities_per_machine`, `min_age_seconds`). The server evaluates and returns `admitted: true/false` alongside `identity` metadata and `attestation`.
+With Newtype's default hosted verifier, the app sends the payload to `api.newtype-ai.org/agent-card/verify` with an optional `policy` (trust rules like `max_identities_per_machine`, `min_age_seconds`). Newtype evaluates and returns `admitted: true/false` alongside `identity` metadata and `attestation`.
 
 The domain is baked into the signature — a signature for `faam.io` is mathematically invalid for `discord.com`.
 
@@ -171,7 +171,7 @@ GET /.well-known/agent-card.json?branch=faam.io   → 401 { challenge }
 GET ... + X-Nit-Signature + X-Nit-Challenge       → branch card
 ```
 
-nit is the client. Any server can implement the protocol. [newtype-ai.org](https://newtype-ai.org) is the recommended free hosting, but you can point to any compatible server.
+nit is the client. Any server can implement the protocol. [newtype-ai.org](https://newtype-ai.org) is the recommended default hosted implementation, not a requirement. See [docs/REMOTE_PROTOCOL.md](docs/REMOTE_PROTOCOL.md).
 
 ## Directory Structure
 

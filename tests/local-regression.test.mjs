@@ -153,6 +153,55 @@ test('push and pull exit nonzero on network failures', () => {
   assert.equal(pullResult.stdout.includes('up to date'), false);
 });
 
+test('push works against a non-Newtype compatible remote', async () => {
+  const cwd = workspace('nit-local-remote-');
+  initWorkspace(cwd);
+  const api = await import(pathToFileURL(join(repoRoot, 'dist', 'index.js')).href);
+  const oldFetch = globalThis.fetch;
+  const pushed = [];
+
+  globalThis.fetch = async (url, init = {}) => {
+    const parsed = new URL(String(url));
+    assert.equal(parsed.origin, 'http://remote.test');
+    assert.equal(parsed.pathname, '/agent-card/branches/main');
+    assert.equal(init.method, 'PUT');
+    assert.match(init.headers['X-Nit-Agent-Id'], /^[0-9a-f-]+$/);
+    assert.equal(typeof init.headers['X-Nit-Signature'], 'string');
+    const body = JSON.parse(String(init.body));
+    assert.equal(typeof body.card_json, 'string');
+    assert.match(body.commit_hash, /^[0-9a-f]{64}$/);
+    pushed.push(body);
+    return new Response(JSON.stringify({ success: true }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+  };
+
+  try {
+    await api.remoteSetUrl('origin', 'http://remote.test', { projectDir: cwd });
+    const result = await api.push({ projectDir: cwd });
+    assert.equal(result[0].success, true);
+    assert.equal(pushed.length, 1);
+  } finally {
+    globalThis.fetch = oldFetch;
+  }
+});
+
+test('doctor default stays local and skips network checks', () => {
+  const cwd = workspace('nit-doctor-local-');
+  initWorkspace(cwd);
+
+  const result = runNit(cwd, ['doctor']);
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  assert.match(result.stdout, /nit version/);
+  assert.match(result.stdout, /workspace/);
+  assert.match(result.stdout, /remote/);
+  assert.equal(result.stdout.includes('remote health'), false);
+  assert.equal(result.stdout.includes('newtype api'), false);
+  assert.equal(result.stdout.includes('npm latest'), false);
+  assert.equal(result.stdout.includes('npm auth'), false);
+});
+
 test('pull reads custom remotes from /.well-known/agent-card.json', async () => {
   const cwd = workspace('nit-pull-url-');
   initWorkspace(cwd);
