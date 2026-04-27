@@ -5,6 +5,7 @@
 // Usage: nit <command> [options]
 // ---------------------------------------------------------------------------
 
+import { execFileSync } from 'node:child_process';
 import {
   init,
   status,
@@ -48,7 +49,7 @@ const dim = (s: string) => `\x1b[2m${s}\x1b[0m`;
 
 async function main() {
   const [, , command, ...args] = process.argv;
-  const skipUpdateCommands = new Set(['help', '--help', '-h', '--version', '-v', undefined]);
+  const skipUpdateCommands = new Set(['help', 'doctor', '--help', '-h', '--version', '-v', undefined]);
   if (!skipUpdateCommands.has(command)) {
     // Auto-update before running mutating/network commands (CLI only, never library)
     await autoUpdate();
@@ -112,6 +113,9 @@ async function main() {
         break;
       case 'pull':
         await cmdPull(args);
+        break;
+      case 'doctor':
+        await cmdDoctor(args);
         break;
       case 'help':
       case '--help':
@@ -586,6 +590,95 @@ async function cmdPull(args: string[]) {
   }
 }
 
+async function cmdDoctor(args: string[]) {
+  const strict = args.includes('--strict');
+  const checks: Array<{ status: 'ok' | 'warn' | 'fail'; name: string; detail: string }> = [];
+  const add = (status: 'ok' | 'warn' | 'fail', name: string, detail: string) => {
+    checks.push({ status, name, detail });
+  };
+
+  add('ok', 'nit version', nitVersion);
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 3_000);
+    let res: Response;
+    try {
+      res = await fetch('https://registry.npmjs.org/@newtype-ai/nit/latest', {
+        signal: controller.signal,
+        headers: { accept: 'application/json' },
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
+    if (res.ok) {
+      const data = (await res.json()) as { version?: string };
+      const latest = data.version ?? 'unknown';
+      add(latest === nitVersion ? 'ok' : 'warn', 'npm latest', latest);
+    } else {
+      add('warn', 'npm latest', `HTTP ${res.status}`);
+    }
+  } catch (err) {
+    add('warn', 'npm latest', err instanceof Error ? err.message : String(err));
+  }
+
+  try {
+    const s = await status();
+    add('ok', 'workspace', `branch ${s.branch}, agent ${s.agentId}`);
+  } catch (err) {
+    add('warn', 'workspace', err instanceof Error ? err.message : String(err));
+  }
+
+  try {
+    const info = await remote();
+    add('ok', 'remote', info.url);
+  } catch (err) {
+    add('warn', 'remote', err instanceof Error ? err.message : String(err));
+  }
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5_000);
+    let res: Response;
+    try {
+      res = await fetch('https://api.newtype-ai.org/health', {
+        signal: controller.signal,
+        headers: { accept: 'application/json' },
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
+    add(res.ok ? 'ok' : 'fail', 'newtype api', `HTTP ${res.status}`);
+  } catch (err) {
+    add('fail', 'newtype api', err instanceof Error ? err.message : String(err));
+  }
+
+  try {
+    const user = execFileSync('npm', ['whoami'], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      timeout: 5_000,
+    }).trim();
+    add('ok', 'npm auth', user);
+  } catch {
+    add('warn', 'npm auth', 'not logged in; publish with NPM_TOKEN or npm login');
+  }
+
+  console.log(bold('nit doctor'));
+  console.log();
+  for (const check of checks) {
+    const label =
+      check.status === 'ok' ? green('ok') :
+      check.status === 'warn' ? yellow('warn') :
+      red('fail');
+    console.log(`${label.padEnd(12)} ${check.name.padEnd(12)} ${dim(check.detail)}`);
+  }
+
+  if (strict && checks.some((check) => check.status !== 'ok')) {
+    process.exit(1);
+  }
+}
+
 async function cmdAuth(args: string[]) {
   const subcommand = args[0];
 
@@ -765,6 +858,7 @@ ${bold('Commands:')}
   checkout <branch>  Switch branch (overwrites agent-card.json)
   push [--all]       Push branch(es) to remote
   pull [--all]       Pull branch(es) from remote
+  doctor [--strict]  Check local setup, remote health, and npm auth
   reset [target]     Restore agent-card.json from HEAD or target
   show [target]      Show commit metadata and card content
   sign "message"     Sign a message with your Ed25519 key

@@ -26,7 +26,118 @@ import { validateBranchName, validateHttpUrl } from './validation.js';
 // Client-declared signals (server stores but treats as untrusted)
 const platformSignal = `${platform()}-${arch()}`;
 const hostnameHash = createHash('sha256').update(hostname()).digest('hex');
+const FETCH_TIMEOUT_MS = 10_000;
+const MAX_RESPONSE_BYTES = 256 * 1024;
+const MAX_ERROR_BYTES = 16 * 1024;
 
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit = {},
+  label = 'Remote request',
+): Promise<Response> {
+  const controller = new AbortController();
+  let timedOut = false;
+  const timeout = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, FETCH_TIMEOUT_MS);
+
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } catch (err) {
+    if (timedOut) {
+      throw new Error(`${label} timed out after ${FETCH_TIMEOUT_MS}ms`);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function readResponseText(
+  res: Response,
+  label: string,
+  maxBytes = MAX_RESPONSE_BYTES,
+): Promise<string> {
+  const length = res.headers.get('content-length');
+  if (length && Number.parseInt(length, 10) > maxBytes) {
+    throw new Error(`${label} exceeds ${maxBytes} bytes`);
+  }
+
+  if (!res.body) {
+    const text = await res.text();
+    if (new TextEncoder().encode(text).byteLength > maxBytes) {
+      throw new Error(`${label} exceeds ${maxBytes} bytes`);
+    }
+    return text;
+  }
+
+  const reader = res.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (!value) continue;
+    total += value.byteLength;
+    if (total > maxBytes) {
+      await reader.cancel();
+      throw new Error(`${label} exceeds ${maxBytes} bytes`);
+    }
+    chunks.push(value);
+  }
+
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new TextDecoder().decode(bytes);
+}
+
+async function readResponseJson<T>(
+  res: Response,
+  label: string,
+  maxBytes = MAX_RESPONSE_BYTES,
+): Promise<T> {
+  const text = await readResponseText(res, label, maxBytes);
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    throw new Error(`${label} is not valid JSON`);
+  }
+}
+
+function parseRemoteBranchList(data: unknown): string[] {
+  if (!data || typeof data !== 'object' || !Array.isArray((data as { branches?: unknown }).branches)) {
+    throw new Error('Remote branch list has invalid shape');
+  }
+
+  return (data as { branches: Array<{ name?: unknown }> }).branches.map((branch) => {
+    if (typeof branch.name !== 'string') {
+      throw new Error('Remote branch list contains a branch without a string name');
+    }
+    validateBranchName(branch.name);
+    return branch.name;
+  });
+}
+
+function parseChallenge(data: unknown): { challenge: string; expires: number } {
+  if (!data || typeof data !== 'object') {
+    throw new Error('Challenge response has invalid shape');
+  }
+  const challenge = (data as { challenge?: unknown }).challenge;
+  const expires = (data as { expires?: unknown }).expires;
+  if (typeof challenge !== 'string' || challenge.length === 0) {
+    throw new Error('Challenge response is missing challenge');
+  }
+  if (typeof expires !== 'number' || !Number.isFinite(expires)) {
+    throw new Error('Challenge response is missing expires');
+  }
+  return { challenge, expires };
+}
 
 // ---------------------------------------------------------------------------
 // Ed25519 signature auth for write operations
@@ -98,17 +209,17 @@ export async function pushBranch(
   try {
     const authHeaders = await buildAuthHeaders(nitDir, 'PUT', path, body);
 
-    const res = await fetch(`${apiBase}${path}`, {
+    const res = await fetchWithTimeout(`${apiBase}${path}`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
         ...authHeaders,
       },
       body,
-    });
+    }, `Push branch "${branch}"`);
 
     if (!res.ok) {
-      const text = await res.text();
+      const text = await readResponseText(res, 'Push error response', MAX_ERROR_BYTES);
       return {
         branch,
         commitHash,
@@ -161,18 +272,16 @@ export async function listRemoteBranches(
   const path = '/agent-card/branches';
   const authHeaders = await buildAuthHeaders(nitDir, 'GET', path);
 
-  const res = await fetch(`${apiBase}${path}`, {
+  const res = await fetchWithTimeout(`${apiBase}${path}`, {
     headers: authHeaders,
-  });
+  }, 'List remote branches');
 
   if (!res.ok) {
     throw new Error(`Failed to list remote branches: HTTP ${res.status}`);
   }
 
-  const data = (await res.json()) as {
-    branches: Array<{ name: string }>;
-  };
-  return data.branches.map((b) => b.name);
+  const data = await readResponseJson<unknown>(res, 'Remote branch list');
+  return parseRemoteBranchList(data);
 }
 
 /**
@@ -188,13 +297,13 @@ export async function deleteRemoteBranch(
   const path = `/agent-card/branches/${encodeURIComponent(branch)}`;
   const authHeaders = await buildAuthHeaders(nitDir, 'DELETE', path);
 
-  const res = await fetch(`${apiBase}${path}`, {
+  const res = await fetchWithTimeout(`${apiBase}${path}`, {
     method: 'DELETE',
     headers: authHeaders,
-  });
+  }, `Delete remote branch "${branch}"`);
 
   if (!res.ok) {
-    const text = await res.text();
+    const text = await readResponseText(res, 'Delete error response', MAX_ERROR_BYTES);
     throw new Error(`Failed to delete remote branch "${branch}": HTTP ${res.status}: ${text}`);
   }
 
@@ -232,11 +341,11 @@ export async function fetchBranchCard(
     url += `?branch=${encodeURIComponent(branch)}`;
   }
 
-  const res = await fetch(url);
+  const res = await fetchWithTimeout(url, undefined, `Fetch branch "${branch}"`);
 
   // Main branch or already authorized
   if (res.ok) {
-    const card: unknown = await res.json();
+    const card = await readResponseJson<unknown>(res, 'Agent card');
     assertAgentCardShape(card);
     return card;
   }
@@ -249,28 +358,27 @@ export async function fetchBranchCard(
       );
     }
 
-    const challengeData = (await res.json()) as {
-      challenge: string;
-      expires: number;
-    };
+    const challengeData = parseChallenge(
+      await readResponseJson<unknown>(res, 'Challenge response', MAX_ERROR_BYTES),
+    );
 
     const signature = await signChallenge(nitDir, challengeData.challenge);
 
-    const authRes = await fetch(url, {
+    const authRes = await fetchWithTimeout(url, {
       headers: {
         'X-Nit-Challenge': challengeData.challenge,
         'X-Nit-Signature': signature,
       },
-    });
+    }, `Fetch branch "${branch}" after challenge`);
 
     if (!authRes.ok) {
-      const body = await authRes.text();
+      const body = await readResponseText(authRes, 'Challenge error response', MAX_ERROR_BYTES);
       throw new Error(
         `Failed to fetch branch "${branch}" after challenge: HTTP ${authRes.status} ${body}`,
       );
     }
 
-    const card: unknown = await authRes.json();
+    const card = await readResponseJson<unknown>(authRes, 'Agent card');
     assertAgentCardShape(card);
     return card;
   }

@@ -116,6 +116,7 @@ Pure Node.js builtins. No bloat.
 | `nit checkout <branch>` | Switch branch (auto-commits changes first) |
 | `nit push [--all]` | Push branch(es) to remote |
 | `nit pull [--all]` | Pull branch(es) from remote |
+| `nit doctor [--strict]` | Check local setup, remote health, and npm auth |
 | `nit reset [target]` | Restore agent-card.json from HEAD or target |
 | `nit show [target]` | Show commit metadata and card content |
 | `nit sign "msg"` | Sign a message with your Ed25519 key |

@@ -1,10 +1,10 @@
 {
   "name": "@newtype-ai/nit",
-  "version": "0.6.9",
+  "version": "0.6.10",
   "description": "Version control for agent cards",
   "type": "module",
   "bin": {
-    "nit": "./dist/cli.js"
+    "nit": "dist/cli.js"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -40,7 +40,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/newtype-ai/nit"
+    "url": "git+https://github.com/newtype-ai/nit.git"
   },
   "homepage": "https://github.com/newtype-ai/nit",
   "devDependencies": {

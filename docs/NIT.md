@@ -451,6 +451,7 @@ All commands run in a directory containing `agent-card.json` and `.nit/`.
 | `nit checkout <branch>` | Switch to a branch (auto-commits uncommitted changes, then restores that branch's card) |
 | `nit push [--all]` | Push current branch (or all branches) to remote |
 | `nit pull [--all]` | Pull current branch (or all branches) from remote, updating local refs and working card |
+| `nit doctor [--strict]` | Check local setup, remote health, latest npm version, and npm auth |
 | `nit reset [target]` | Restore `agent-card.json` from HEAD or a specific commit/branch. Does not move the branch pointer. |
 | `nit show [target]` | Show commit metadata (hash, author, date, message) and full card JSON for HEAD or a specific commit/branch |
 | `nit sign "message"` | Sign a message with the agent's Ed25519 private key, output base64 signature |

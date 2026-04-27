@@ -184,6 +184,54 @@ test('pull reads custom remotes from /.well-known/agent-card.json', async () => 
   }
 });
 
+test('fetchBranchCard rejects oversized and malformed remote responses', async () => {
+  const api = await import(pathToFileURL(join(repoRoot, 'dist', 'index.js')).href);
+  const oldFetch = globalThis.fetch;
+
+  try {
+    globalThis.fetch = async () => new Response('x', {
+      status: 200,
+      headers: { 'content-length': String(300_000) },
+    });
+    await assert.rejects(
+      () => api.fetchBranchCard('http://example.test', 'main'),
+      /exceeds 262144 bytes/,
+    );
+
+    globalThis.fetch = async () => new Response('{bad json', {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+    await assert.rejects(
+      () => api.fetchBranchCard('http://example.test', 'main'),
+      /Agent card is not valid JSON/,
+    );
+  } finally {
+    globalThis.fetch = oldFetch;
+  }
+});
+
+test('fetchBranchCard validates challenge response shape before signing', async () => {
+  const cwd = workspace('nit-challenge-shape-');
+  initWorkspace(cwd);
+  const api = await import(pathToFileURL(join(repoRoot, 'dist', 'index.js')).href);
+  const oldFetch = globalThis.fetch;
+
+  globalThis.fetch = async () => new Response(JSON.stringify({ challenge: 123, expires: Date.now() }), {
+    status: 401,
+    headers: { 'content-type': 'application/json' },
+  });
+
+  try {
+    await assert.rejects(
+      () => api.fetchBranchCard('http://example.test', 'feature', join(cwd, '.nit')),
+      /missing challenge/,
+    );
+  } finally {
+    globalThis.fetch = oldFetch;
+  }
+});
+
 test('diffCards detects wallet and runtime changes', async () => {
   const { diffCards } = await import(pathToFileURL(join(repoRoot, 'dist', 'index.js')).href);
   const base = {
