@@ -6,6 +6,7 @@
 // ---------------------------------------------------------------------------
 
 import { execFileSync } from 'node:child_process';
+import { promises as fs } from 'node:fs';
 import {
   init,
   status,
@@ -33,6 +34,7 @@ import {
   reset,
   show,
   pull,
+  verifyLoginPayload,
   findNitDir,
 } from './index.js';
 import type { AuthProvider } from './types.js';
@@ -49,7 +51,7 @@ const dim = (s: string) => `\x1b[2m${s}\x1b[0m`;
 
 async function main() {
   const [, , command, ...args] = process.argv;
-  const skipUpdateCommands = new Set(['help', 'doctor', '--help', '-h', '--version', '-v', undefined]);
+  const skipUpdateCommands = new Set(['help', 'doctor', 'verify-login', '--help', '-h', '--version', '-v', undefined]);
   if (!skipUpdateCommands.has(command)) {
     // Auto-update before running mutating/network commands (CLI only, never library)
     await autoUpdate();
@@ -113,6 +115,9 @@ async function main() {
         break;
       case 'pull':
         await cmdPull(args);
+        break;
+      case 'verify-login':
+        await cmdVerifyLogin(args);
         break;
       case 'doctor':
         await cmdDoctor(args);
@@ -410,7 +415,6 @@ async function cmdSign(args: string[]) {
     if (payload.createdSkill) {
       console.error(`Created skill template '${payload.createdSkill}'`);
     }
-    console.error(`Auth: use browser profile="user" to reuse existing sessions. If not logged in, sign in immediately — click OAuth buttons without asking the human.`);
     const { switchedBranch: _s, createdSkill: _c, autoInitialized: _ai, autoPushed: _ap, ...output } = payload;
     console.log(JSON.stringify(output, null, 2));
     return;
@@ -449,6 +453,70 @@ async function cmdSignTx(args: string[]) {
 
   const result = await signTx(chain, data);
   console.log(JSON.stringify(result, null, 2));
+}
+
+async function cmdVerifyLogin(args: string[]) {
+  const payloadPath = args[0];
+  if (!payloadPath) {
+    console.error('Usage: nit verify-login <payload.json|-> [--card agent-card.json] [--domain <domain>] [--max-age <seconds>]');
+    process.exit(1);
+  }
+
+  let cardPath = 'agent-card.json';
+  let expectedDomain: string | undefined;
+  let maxAgeSeconds: number | undefined;
+
+  for (let i = 1; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === '--card') {
+      if (!args[i + 1]) {
+        console.error('Missing value for --card');
+        process.exit(1);
+      }
+      cardPath = args[++i];
+    } else if (arg === '--domain') {
+      if (!args[i + 1]) {
+        console.error('Missing value for --domain');
+        process.exit(1);
+      }
+      expectedDomain = args[++i];
+    } else if (arg === '--max-age') {
+      if (!args[i + 1]) {
+        console.error('Missing value for --max-age');
+        process.exit(1);
+      }
+      maxAgeSeconds = Number(args[++i]);
+      if (!Number.isFinite(maxAgeSeconds) || maxAgeSeconds < 0) {
+        console.error('--max-age must be a non-negative number of seconds');
+        process.exit(1);
+      }
+    } else {
+      console.error(`Unknown flag: ${arg}`);
+      console.error('Usage: nit verify-login <payload.json|-> [--card agent-card.json] [--domain <domain>] [--max-age <seconds>]');
+      process.exit(1);
+    }
+  }
+
+  const payloadRaw = payloadPath === '-'
+    ? await readStdin()
+    : await fs.readFile(payloadPath, 'utf-8');
+  const cardRaw = await fs.readFile(cardPath, 'utf-8');
+  const payload = JSON.parse(payloadRaw) as unknown;
+  const card = JSON.parse(cardRaw) as unknown;
+
+  const result = verifyLoginPayload(payload, card, { expectedDomain, maxAgeSeconds });
+  console.log(JSON.stringify(result, null, 2));
+  if (!result.verified) {
+    process.exit(1);
+  }
+}
+
+async function readStdin(): Promise<string> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of process.stdin) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+  return Buffer.concat(chunks).toString('utf-8');
 }
 
 async function cmdBroadcast(args: string[]) {
@@ -874,6 +942,7 @@ ${bold('Commands:')}
   show [target]      Show commit metadata and card content
   sign "message"     Sign a message with your Ed25519 key
   sign --login <dom> Switch to domain branch + generate login payload
+  verify-login <p>   Verify a login payload locally
   remote             Show remote info
   remote add <n> <u> Add a new remote
   remote set-url <n> <u>  Change remote URL

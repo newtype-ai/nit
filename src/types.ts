@@ -221,6 +221,16 @@ export interface LoginPayload {
   public_key: string;
 }
 
+/** Result of verifying a nit login payload locally. */
+export interface LoginVerificationResult {
+  verified: boolean;
+  agent_id: string;
+  domain: string;
+  public_key: string;
+  age_seconds: number;
+  error?: string;
+}
+
 // ---------------------------------------------------------------------------
 // Identity registry types (server verify endpoint)
 // ---------------------------------------------------------------------------

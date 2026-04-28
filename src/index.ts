@@ -22,6 +22,8 @@ import {
   type SignTxResult,
   type BroadcastResult,
   type AgentRuntime,
+  type LoginPayload,
+  type LoginVerificationResult,
 } from './types.js';
 import {
   hashObject,
@@ -51,6 +53,8 @@ import {
   loadAgentId,
   saveAgentId,
   signMessage,
+  parsePublicKeyField,
+  verifySignature,
   loadRawKeyPair,
 } from './identity.js';
 import { discoverSkills, discoverSkillsDir, resolveSkillPointers, createSkillTemplate, updateSkillAuth, readSkillAuth, createNitSkill } from './skills.js';
@@ -102,6 +106,7 @@ export type {
   PushResult,
   StatusResult,
   LoginPayload,
+  LoginVerificationResult,
   SkillMetadata,
   WalletAddresses,
   IdentityMetadata,
@@ -116,6 +121,7 @@ export {
   signMessage,
   formatPublicKeyField,
   parsePublicKeyField,
+  verifySignature,
   deriveAgentId,
   loadAgentId,
   loadRawKeyPair,
@@ -606,6 +612,145 @@ export async function loginPayload(
   const message = `${agentId}\n${domain}\n${timestamp}`;
   const signature = await signMessage(nitDir, message);
   return { agent_id: agentId, domain, timestamp, signature, public_key: publicKey, switchedBranch, createdSkill, autoInitialized, autoPushed };
+}
+
+function parseLoginPayloadShape(payload: unknown): LoginPayload {
+  if (payload === null || typeof payload !== 'object' || Array.isArray(payload)) {
+    throw new Error('Login payload must be a JSON object');
+  }
+  const p = payload as Record<string, unknown>;
+  if (typeof p.agent_id !== 'string' || p.agent_id.length === 0) {
+    throw new Error('Login payload is missing agent_id');
+  }
+  if (typeof p.domain !== 'string' || p.domain.length === 0) {
+    throw new Error('Login payload is missing domain');
+  }
+  if (typeof p.timestamp !== 'number' || !Number.isFinite(p.timestamp)) {
+    throw new Error('Login payload is missing timestamp');
+  }
+  if (typeof p.signature !== 'string' || p.signature.length === 0) {
+    throw new Error('Login payload is missing signature');
+  }
+  if (typeof p.public_key !== 'string' || p.public_key.length === 0) {
+    throw new Error('Login payload is missing public_key');
+  }
+  return {
+    agent_id: p.agent_id,
+    domain: p.domain,
+    timestamp: p.timestamp,
+    signature: p.signature,
+    public_key: p.public_key,
+  };
+}
+
+/**
+ * Verify a nit login payload locally against an agent card.
+ *
+ * This does not call newtype-ai.org. It derives the agent ID from the card's
+ * publicKey, rebuilds the canonical login message, and verifies the Ed25519
+ * signature directly.
+ */
+export function verifyLoginPayload(
+  payload: unknown,
+  card: unknown,
+  options?: {
+    expectedDomain?: string;
+    maxAgeSeconds?: number;
+    now?: number;
+  },
+): LoginVerificationResult {
+  let parsed: LoginPayload | null = null;
+  const now = options?.now ?? Math.floor(Date.now() / 1000);
+  const maxAgeSeconds = options?.maxAgeSeconds ?? 300;
+
+  const fail = (error: string, publicKey = parsed?.public_key ?? ''): LoginVerificationResult => ({
+    verified: false,
+    agent_id: parsed?.agent_id ?? '',
+    domain: parsed?.domain ?? '',
+    public_key: publicKey,
+    age_seconds: parsed ? now - parsed.timestamp : 0,
+    error,
+  });
+
+  try {
+    parsed = parseLoginPayloadShape(payload);
+  } catch (err) {
+    return fail(err instanceof Error ? err.message : String(err));
+  }
+
+  try {
+    validateBranchName(parsed.domain);
+  } catch (err) {
+    return fail(err instanceof Error ? err.message : String(err));
+  }
+
+  if (options?.expectedDomain) {
+    try {
+      validateBranchName(options.expectedDomain);
+    } catch (err) {
+      return fail(err instanceof Error ? err.message : String(err));
+    }
+    if (parsed.domain !== options.expectedDomain) {
+      return fail(`Login payload domain "${parsed.domain}" does not match expected domain "${options.expectedDomain}"`);
+    }
+  }
+
+  if (!Number.isFinite(maxAgeSeconds) || maxAgeSeconds < 0) {
+    return fail('maxAgeSeconds must be a non-negative finite number');
+  }
+
+  const ageSeconds = now - parsed.timestamp;
+  if (Math.abs(ageSeconds) > maxAgeSeconds) {
+    return fail(`Login payload is outside max age (${maxAgeSeconds}s)`);
+  }
+
+  let agentCard: AgentCard;
+  try {
+    assertAgentCardShape(card);
+    agentCard = card;
+  } catch (err) {
+    return fail(err instanceof Error ? err.message : String(err));
+  }
+
+  if (!agentCard.publicKey) {
+    return fail('Agent card has no publicKey');
+  }
+
+  if (parsed.public_key !== agentCard.publicKey) {
+    return fail('Login payload public_key does not match card publicKey', agentCard.publicKey);
+  }
+
+  let pubBase64: string;
+  try {
+    pubBase64 = parsePublicKeyField(agentCard.publicKey);
+  } catch (err) {
+    return fail(err instanceof Error ? err.message : String(err), agentCard.publicKey);
+  }
+
+  if (Buffer.from(pubBase64, 'base64').length !== 32) {
+    return fail('Agent card publicKey must contain a 32-byte Ed25519 key', agentCard.publicKey);
+  }
+
+  if (deriveAgentId(agentCard.publicKey) !== parsed.agent_id) {
+    return fail('Login payload agent_id does not match card publicKey', agentCard.publicKey);
+  }
+
+  if (Buffer.from(parsed.signature, 'base64').length !== 64) {
+    return fail('Login payload signature must be a 64-byte Ed25519 signature', agentCard.publicKey);
+  }
+
+  const message = `${parsed.agent_id}\n${parsed.domain}\n${parsed.timestamp}`;
+  if (!verifySignature(pubBase64, message, parsed.signature)) {
+    return fail('Login payload signature is invalid', agentCard.publicKey);
+  }
+
+  return {
+    verified: true,
+    agent_id: parsed.agent_id,
+    domain: parsed.domain,
+    public_key: agentCard.publicKey,
+    age_seconds: ageSeconds,
+  };
 }
 
 // ---------------------------------------------------------------------------

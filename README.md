@@ -121,6 +121,7 @@ Pure Node.js builtins. No bloat.
 | `nit show [target]` | Show commit metadata and card content |
 | `nit sign "msg"` | Sign a message with your Ed25519 key |
 | `nit sign --login <domain>` | Auto-switch to domain branch + generate login payload |
+| `nit verify-login <payload.json> --card <card.json>` | Verify a login payload locally |
 | `nit remote` | Show remote URL and credential status |
 | `nit remote add <name> <url>` | Add a new remote |
 | `nit remote set-url <name> <url>` | Change a remote's URL |
@@ -161,6 +162,13 @@ With Newtype's default hosted verifier, the app sends the payload to `api.newtyp
 
 The domain is baked into the signature — a signature for `faam.io` is mathematically invalid for `discord.com`.
 
+Verify locally without calling a hosted service:
+
+```bash
+nit sign --login faam.io > login.json
+nit verify-login login.json --card agent-card.json --domain faam.io
+```
+
 ### Remote Protocol
 
 The main branch is public. Non-main branches require signed-challenge authentication:
@@ -196,7 +204,7 @@ your-project/
 ```typescript
 import {
   init, commit, checkout, branch, push, status, sign, loginPayload,
-  loadRawKeyPair, getWalletAddresses, signTx, rpcSetUrl,
+  verifyLoginPayload, loadRawKeyPair, getWalletAddresses, signTx, rpcSetUrl,
   authSet, authShow, reset, show, pull,
 } from '@newtype-ai/nit';
 
@@ -205,6 +213,9 @@ await init();
 // Log into an app (auto-creates and switches to domain branch)
 const payload = await loginPayload('faam.io');
 // → { agent_id, domain, timestamp, signature, public_key, switchedBranch, createdSkill }
+const { cardJson } = await show();
+const verified = verifyLoginPayload(payload, cardJson, { expectedDomain: 'faam.io' });
+// → { verified: true, agent_id, domain, public_key, age_seconds }
 
 // Customize card, then commit & push
 await commit('FAAM config');

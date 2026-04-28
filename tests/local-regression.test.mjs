@@ -326,3 +326,62 @@ test('sign-tx rejects malformed hex before signing', () => {
   assert.equal(valid.status, 0, valid.stderr || valid.stdout);
   assert.equal(JSON.parse(valid.stdout).chain, 'solana');
 });
+
+test('sign --login emits clean JSON and verify-login checks it locally', () => {
+  const cwd = workspace('nit-login-');
+  initWorkspace(cwd);
+
+  const login = runNit(cwd, ['sign', '--login', 'faam.io']);
+  assert.equal(login.status, 0, login.stderr || login.stdout);
+  assert.doesNotMatch(login.stderr, /Auth:|browser profile|OAuth/i);
+
+  const payload = JSON.parse(login.stdout);
+  assert.equal(payload.domain, 'faam.io');
+  assert.equal(typeof payload.signature, 'string');
+  assert.equal(typeof payload.public_key, 'string');
+  assert.equal(payload.switchedBranch, undefined);
+  assert.equal(payload.createdSkill, undefined);
+
+  const payloadPath = join(cwd, 'login.json');
+  writeFileSync(payloadPath, login.stdout, 'utf8');
+
+  const verified = runNit(cwd, [
+    'verify-login',
+    payloadPath,
+    '--card',
+    'agent-card.json',
+    '--domain',
+    'faam.io',
+  ]);
+  assert.equal(verified.status, 0, verified.stderr || verified.stdout);
+  const result = JSON.parse(verified.stdout);
+  assert.equal(result.verified, true);
+  assert.equal(result.agent_id, payload.agent_id);
+  assert.equal(result.domain, 'faam.io');
+
+  const wrongDomain = runNit(cwd, [
+    'verify-login',
+    payloadPath,
+    '--card',
+    'agent-card.json',
+    '--domain',
+    'discord.com',
+  ]);
+  assert.notEqual(wrongDomain.status, 0);
+  assert.equal(JSON.parse(wrongDomain.stdout).verified, false);
+  assert.match(JSON.parse(wrongDomain.stdout).error, /expected domain/);
+
+  payload.domain = 'discord.com';
+  writeFileSync(payloadPath, JSON.stringify(payload), 'utf8');
+  const tampered = runNit(cwd, [
+    'verify-login',
+    payloadPath,
+    '--card',
+    'agent-card.json',
+    '--max-age',
+    '600',
+  ]);
+  assert.notEqual(tampered.status, 0);
+  assert.equal(JSON.parse(tampered.stdout).verified, false);
+  assert.match(JSON.parse(tampered.stdout).error, /signature is invalid/);
+});

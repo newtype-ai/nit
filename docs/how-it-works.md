@@ -102,6 +102,8 @@ Parent is omitted for the initial commit. Timestamp is unix seconds.
    }
    ```
 
+7. **Local verify:** `nit verify-login login.json --card agent-card.json --domain sharkclaw.ai` rebuilds the same message and verifies the Ed25519 signature against the card's `publicKey`.
+
 **Domain binding — why cross-app replay is impossible:**
 
 The domain is not a secret — it's a **binding constraint** baked into the signature. Knowing another app's domain name doesn't help an attacker. Here's why:

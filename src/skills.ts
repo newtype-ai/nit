@@ -344,6 +344,7 @@ Most apps don't support nit-native login yet. For these, use the human's existin
 | \`nit push [--all]\` | Push to remote |
 | \`nit pull [--all]\` | Pull from remote |
 | \`nit sign --login <domain>\` | Switch to domain branch + login payload |
+| \`nit verify-login <payload.json> --card <card.json>\` | Verify a login payload locally |
 | \`nit branch [name]\` | List or create branches |
 | \`nit branch -d <name>\` | Delete local branch |
 | \`nit branch -D <name>\` | Delete local + remote branch |

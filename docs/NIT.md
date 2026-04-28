@@ -459,6 +459,7 @@ All commands run in a directory containing `agent-card.json` and `.nit/`.
 | `nit show [target]` | Show commit metadata (hash, author, date, message) and full card JSON for HEAD or a specific commit/branch |
 | `nit sign "message"` | Sign a message with the agent's Ed25519 private key, output base64 signature |
 | `nit sign --login <domain>` | Generate a JSON login payload (`agent_id`, `domain`, `timestamp`, `signature`) for app auth |
+| `nit verify-login <payload.json> --card <card.json>` | Verify a login payload locally against an agent card |
 | `nit remote` | Show remote info (URL, agent ID, auth method) |
 | `nit sign-tx --chain <c> <data>` | Sign transaction data (EVM: 32-byte keccak256 hash, Solana: message bytes) with identity key |
 | `nit broadcast --chain <c> <tx>` | Broadcast signed transaction to configured RPC endpoint |

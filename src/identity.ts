@@ -188,13 +188,11 @@ export async function signChallenge(
 }
 
 /**
- * Verify a signature against a challenge using the raw base64 public key.
- * Internal utility — not part of the public API.
- * Apps verify via POST api.newtype-ai.org/agent-card/verify instead.
+ * Verify a signature against a message using the raw base64 public key.
  */
-function verifySignature(
+export function verifySignature(
   pubBase64: string,
-  challenge: string,
+  message: string,
   signatureBase64: string,
 ): boolean {
   const xB64url = base64ToBase64url(pubBase64);
@@ -206,7 +204,7 @@ function verifySignature(
 
   return verify(
     null,
-    Buffer.from(challenge, 'utf-8'),
+    Buffer.from(message, 'utf-8'),
     publicKeyObj,
     Buffer.from(signatureBase64, 'base64'),
   );
