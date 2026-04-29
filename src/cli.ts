@@ -18,6 +18,8 @@ import {
   checkout,
   push,
   remote,
+  remoteBranches,
+  remoteCheck,
   remoteAdd,
   remoteSetUrl,
   sign,
@@ -422,9 +424,44 @@ async function cmdRemote(args: string[]) {
     return;
   }
 
+  if (subcommand === 'branches') {
+    const branches = await remoteBranches();
+    for (const branchName of branches) {
+      console.log(branchName);
+    }
+    return;
+  }
+
+  if (subcommand === 'check') {
+    const result = await remoteCheck();
+    console.log(`${bold(result.name)}`);
+    console.log(`  URL:        ${result.url}`);
+
+    if (result.health.ok) {
+      const detail = result.health.optional
+        ? `HTTP ${result.health.status} (/health optional)`
+        : `HTTP ${result.health.status}`;
+      console.log(`  Health:     ${green('ok')} ${dim(detail)}`);
+    } else {
+      const detail = result.health.error ?? `HTTP ${result.health.status ?? 'unknown'}`;
+      console.log(`  Health:     ${yellow('warn')} ${dim(detail)}`);
+    }
+
+    if (result.branches.ok) {
+      console.log(`  Branches:   ${green('ok')} ${dim(`${result.branches.names.length} found`)}`);
+      for (const branchName of result.branches.names) {
+        console.log(`    ${branchName}`);
+      }
+    } else {
+      console.log(`  Branches:   ${red('fail')} ${dim(result.branches.error ?? 'unknown error')}`);
+      process.exit(1);
+    }
+    return;
+  }
+
   if (subcommand) {
     console.error(`nit remote: unknown subcommand '${subcommand}'`);
-    console.error('Usage: nit remote [set-url <name> <url> | add <name> <url>]');
+    console.error('Usage: nit remote [branches | check | set-url <name> <url> | add <name> <url>]');
     process.exit(1);
   }
 
@@ -1021,6 +1058,8 @@ ${bold('Commands:')}
   sign --login <dom> Switch to domain branch + generate login payload
   verify-login <p>   Verify a login payload locally
   remote             Show remote info
+  remote branches    List branches on the configured remote
+  remote check       Check remote health and signed branch listing
   remote add <n> <u> Add a new remote
   remote set-url <n> <u>  Change remote URL
   sign-tx --chain <c> <data>  Sign tx data (evm: hash, solana: message)

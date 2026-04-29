@@ -315,6 +315,100 @@ test('pull reads custom remotes from /.well-known/agent-card.json', async () => 
   }
 });
 
+test('remote branch APIs work against a non-Newtype compatible remote', async () => {
+  const cwd = workspace('nit-remote-branches-');
+  initWorkspace(cwd);
+  const api = await import(pathToFileURL(join(repoRoot, 'dist', 'index.js')).href);
+  const oldFetch = globalThis.fetch;
+  const calls = [];
+
+  globalThis.fetch = async (url, init = {}) => {
+    const parsed = new URL(String(url));
+    calls.push({ pathname: parsed.pathname, method: init.method ?? 'GET', headers: init.headers ?? {} });
+    assert.equal(parsed.origin, 'http://remote.test');
+
+    if (parsed.pathname === '/health') {
+      return new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }
+
+    if (parsed.pathname === '/agent-card/branches') {
+      assert.equal(typeof init.headers['X-Nit-Agent-Id'], 'string');
+      assert.equal(typeof init.headers['X-Nit-Signature'], 'string');
+      return new Response(JSON.stringify({
+        branches: [{ name: 'main' }, { name: 'faam.io' }],
+      }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }
+
+    throw new Error(`unexpected request ${parsed.pathname}`);
+  };
+
+  try {
+    await api.remoteSetUrl('origin', 'http://remote.test', { projectDir: cwd });
+    assert.deepEqual(await api.remoteBranches({ projectDir: cwd }), ['main', 'faam.io']);
+
+    const check = await api.remoteCheck({ projectDir: cwd });
+    assert.equal(check.health.ok, true);
+    assert.equal(check.branches.ok, true);
+    assert.deepEqual(check.branches.names, ['main', 'faam.io']);
+
+    assert.deepEqual(
+      calls.map((call) => `${call.method} ${call.pathname}`),
+      ['GET /agent-card/branches', 'GET /health', 'GET /agent-card/branches'],
+    );
+  } finally {
+    globalThis.fetch = oldFetch;
+  }
+});
+
+test('fetchBranchCard completes non-main challenge-response flow', async () => {
+  const cwd = workspace('nit-fetch-challenge-');
+  initWorkspace(cwd);
+  const api = await import(pathToFileURL(join(repoRoot, 'dist', 'index.js')).href);
+  const card = JSON.parse(readFileSync(join(cwd, 'agent-card.json'), 'utf8'));
+  card.description = 'private branch card';
+  const oldFetch = globalThis.fetch;
+  const calls = [];
+
+  globalThis.fetch = async (url, init = {}) => {
+    const parsed = new URL(String(url));
+    calls.push({ search: parsed.search, headers: init.headers ?? {} });
+    assert.equal(parsed.origin, 'http://card.test');
+    assert.equal(parsed.pathname, '/.well-known/agent-card.json');
+    assert.equal(parsed.searchParams.get('branch'), 'faam.io');
+
+    if (!init.headers?.['X-Nit-Challenge']) {
+      return new Response(JSON.stringify({
+        challenge: 'challenge-token',
+        expires: Math.floor(Date.now() / 1000) + 60,
+      }), {
+        status: 401,
+        headers: { 'content-type': 'application/json' },
+      });
+    }
+
+    assert.equal(init.headers['X-Nit-Challenge'], 'challenge-token');
+    assert.equal(typeof init.headers['X-Nit-Signature'], 'string');
+    return new Response(JSON.stringify(card), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+  };
+
+  try {
+    const result = await api.fetchBranchCard('http://card.test', 'faam.io', join(cwd, '.nit'));
+    assert.equal(result.description, 'private branch card');
+    assert.equal(calls.length, 2);
+  } finally {
+    globalThis.fetch = oldFetch;
+  }
+});
+
 test('fetchBranchCard rejects oversized and malformed remote responses', async () => {
   const api = await import(pathToFileURL(join(repoRoot, 'dist', 'index.js')).href);
   const oldFetch = globalThis.fetch;
@@ -466,4 +560,36 @@ test('sign --login emits clean JSON and verify-login checks it locally', () => {
   assert.notEqual(tampered.status, 0);
   assert.equal(JSON.parse(tampered.stdout).verified, false);
   assert.match(JSON.parse(tampered.stdout).error, /signature is invalid/);
+});
+
+test('verify-login rejects malformed ids, timestamps, and base64 strictly', async () => {
+  const cwd = workspace('nit-login-strict-');
+  initWorkspace(cwd);
+  const api = await import(pathToFileURL(join(repoRoot, 'dist', 'index.js')).href);
+
+  const login = runNit(cwd, ['sign', '--login', 'faam.io']);
+  assert.equal(login.status, 0, login.stderr || login.stdout);
+  const payload = JSON.parse(login.stdout);
+  const card = JSON.parse(readFileSync(join(cwd, 'agent-card.json'), 'utf8'));
+
+  assert.match(
+    api.verifyLoginPayload({ ...payload, agent_id: 'not-a-uuid' }, card).error,
+    /agent_id must be a UUID/,
+  );
+  assert.match(
+    api.verifyLoginPayload({ ...payload, timestamp: payload.timestamp + 0.5 }, card).error,
+    /timestamp must be an integer/,
+  );
+  assert.match(
+    api.verifyLoginPayload({ ...payload, signature: payload.signature.replace(/=$/, '') }, card).error,
+    /64-byte Ed25519 signature/,
+  );
+  assert.match(
+    api.verifyLoginPayload(payload, card, { now: payload.timestamp + 301 }).error,
+    /stale/,
+  );
+  assert.match(
+    api.verifyLoginPayload(payload, card, { now: payload.timestamp - 301 }).error,
+    /future/,
+  );
 });

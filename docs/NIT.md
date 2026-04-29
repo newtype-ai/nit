@@ -463,6 +463,8 @@ All commands run in a directory containing `agent-card.json` and `.nit/`.
 | `nit sign --login <domain>` | Generate a JSON login payload (`agent_id`, `domain`, `timestamp`, `signature`) for app auth |
 | `nit verify-login <payload.json> --card <card.json>` | Verify a login payload locally against an agent card |
 | `nit remote` | Show remote info (URL, agent ID, auth method) |
+| `nit remote branches` | List branches on the configured remote using signed Ed25519 auth |
+| `nit remote check` | Check remote URL, optional `/health`, and signed branch listing |
 | `nit sign-tx --chain <c> <data>` | Sign transaction data (EVM: 32-byte keccak256 hash, Solana: message bytes) with identity key |
 | `nit broadcast --chain <c> <tx>` | Broadcast signed transaction to configured RPC endpoint |
 | `nit rpc` | Show configured RPC endpoints |

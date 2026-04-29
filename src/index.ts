@@ -78,6 +78,7 @@ import {
   pushBranch as remotePushBranch,
   pushAll as remotePushAll,
   deleteRemoteBranch,
+  listRemoteBranches,
 } from './remote.js';
 import {
   readConfig,
@@ -164,6 +165,8 @@ const NIT_DIR = '.nit';
 const CARD_FILE = 'agent-card.json';
 const DEFAULT_API_BASE = 'https://api.newtype-ai.org';
 const CURRENT_PROTOCOL_VERSION = '0.3.0';
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const BASE64_RE = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
 
 function defaultCardUrl(agentId: string): string {
   return `https://agent-${agentId}.newtype-ai.org`;
@@ -692,11 +695,17 @@ function parseLoginPayloadShape(payload: unknown): LoginPayload {
   if (typeof p.agent_id !== 'string' || p.agent_id.length === 0) {
     throw new Error('Login payload is missing agent_id');
   }
+  if (!UUID_RE.test(p.agent_id)) {
+    throw new Error('Login payload agent_id must be a UUID');
+  }
   if (typeof p.domain !== 'string' || p.domain.length === 0) {
     throw new Error('Login payload is missing domain');
   }
   if (typeof p.timestamp !== 'number' || !Number.isFinite(p.timestamp)) {
     throw new Error('Login payload is missing timestamp');
+  }
+  if (!Number.isInteger(p.timestamp)) {
+    throw new Error('Login payload timestamp must be an integer Unix second');
   }
   if (typeof p.signature !== 'string' || p.signature.length === 0) {
     throw new Error('Login payload is missing signature');
@@ -711,6 +720,21 @@ function parseLoginPayloadShape(payload: unknown): LoginPayload {
     signature: p.signature,
     public_key: p.public_key,
   };
+}
+
+function strictBase64ByteLength(value: string): number | null {
+  if (!BASE64_RE.test(value)) {
+    return null;
+  }
+  try {
+    const decoded = Buffer.from(value, 'base64');
+    if (decoded.toString('base64') !== value) {
+      return null;
+    }
+    return decoded.length;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -770,8 +794,11 @@ export function verifyLoginPayload(
   }
 
   const ageSeconds = now - parsed.timestamp;
-  if (Math.abs(ageSeconds) > maxAgeSeconds) {
-    return fail(`Login payload is outside max age (${maxAgeSeconds}s)`);
+  if (ageSeconds > maxAgeSeconds) {
+    return fail(`Login payload is stale by ${ageSeconds - maxAgeSeconds}s`);
+  }
+  if (ageSeconds < -maxAgeSeconds) {
+    return fail(`Login payload timestamp is ${Math.abs(ageSeconds) - maxAgeSeconds}s too far in the future`);
   }
 
   let agentCard: AgentCard;
@@ -797,7 +824,7 @@ export function verifyLoginPayload(
     return fail(err instanceof Error ? err.message : String(err), agentCard.publicKey);
   }
 
-  if (Buffer.from(pubBase64, 'base64').length !== 32) {
+  if (strictBase64ByteLength(pubBase64) !== 32) {
     return fail('Agent card publicKey must contain a 32-byte Ed25519 key', agentCard.publicKey);
   }
 
@@ -805,7 +832,7 @@ export function verifyLoginPayload(
     return fail('Login payload agent_id does not match card publicKey', agentCard.publicKey);
   }
 
-  if (Buffer.from(parsed.signature, 'base64').length !== 64) {
+  if (strictBase64ByteLength(parsed.signature) !== 64) {
     return fail('Login payload signature must be a 64-byte Ed25519 signature', agentCard.publicKey);
   }
 
@@ -1186,6 +1213,79 @@ export async function remote(options?: {
     url: remoteUrl || DEFAULT_API_BASE,
     agentId,
   };
+}
+
+export async function remoteBranches(options?: {
+  projectDir?: string;
+  remoteName?: string;
+}): Promise<string[]> {
+  const nitDir = findNitDir(options?.projectDir);
+  const remoteName = options?.remoteName || 'origin';
+  validateRemoteName(remoteName);
+  const apiBase = (await getRemoteUrl(nitDir, remoteName)) || DEFAULT_API_BASE;
+  return listRemoteBranches(nitDir, apiBase);
+}
+
+export interface RemoteCheckResult {
+  name: string;
+  url: string;
+  health: {
+    checked: boolean;
+    ok: boolean;
+    status?: number;
+    optional?: boolean;
+    error?: string;
+  };
+  branches: {
+    ok: boolean;
+    names: string[];
+    error?: string;
+  };
+}
+
+export async function remoteCheck(options?: {
+  projectDir?: string;
+  remoteName?: string;
+}): Promise<RemoteCheckResult> {
+  const nitDir = findNitDir(options?.projectDir);
+  const remoteName = options?.remoteName || 'origin';
+  validateRemoteName(remoteName);
+  const apiBase = (await getRemoteUrl(nitDir, remoteName)) || DEFAULT_API_BASE;
+
+  const result: RemoteCheckResult = {
+    name: remoteName,
+    url: apiBase,
+    health: { checked: true, ok: false },
+    branches: { ok: false, names: [] },
+  };
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5_000);
+    let res: Response;
+    try {
+      res = await fetch(new URL('/health', apiBase).toString(), {
+        signal: controller.signal,
+        headers: { accept: 'application/json' },
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
+    result.health.status = res.status;
+    result.health.ok = res.ok || res.status === 404;
+    result.health.optional = res.status === 404;
+  } catch (err) {
+    result.health.error = err instanceof Error ? err.message : String(err);
+  }
+
+  try {
+    result.branches.names = await listRemoteBranches(nitDir, apiBase);
+    result.branches.ok = true;
+  } catch (err) {
+    result.branches.error = err instanceof Error ? err.message : String(err);
+  }
+
+  return result;
 }
 
 /**

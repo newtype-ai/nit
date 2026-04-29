@@ -139,6 +139,8 @@ Pure Node.js builtins. No bloat.
 | `nit sign --login <domain>` | Auto-switch to domain branch + generate login payload |
 | `nit verify-login <payload.json> --card <card.json>` | Verify a login payload locally |
 | `nit remote` | Show remote URL and credential status |
+| `nit remote branches` | List branches on the configured remote |
+| `nit remote check` | Check remote health and signed branch listing |
 | `nit remote add <name> <url>` | Add a new remote |
 | `nit remote set-url <name> <url>` | Change a remote's URL |
 | `nit sign-tx --chain <c> <data>` | Sign transaction data (EVM: 32-byte hash, Solana: message bytes) |

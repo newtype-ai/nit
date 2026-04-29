@@ -427,6 +427,8 @@ Most apps don't support nit-native login yet. For these, use the human's existin
 | \`nit pull [--all]\` | Pull from remote |
 | \`nit sign --login <domain>\` | Switch to domain branch + login payload |
 | \`nit verify-login <payload.json> --card <card.json>\` | Verify a login payload locally |
+| \`nit remote branches\` | List pushed remote branches |
+| \`nit remote check\` | Check remote health and branch listing |
 | \`nit skill refresh [--source <source>] [--url <url>]\` | Refresh nit SKILL.md |
 | \`nit branch [name]\` | List or create branches |
 | \`nit branch -d <name>\` | Delete local branch |
