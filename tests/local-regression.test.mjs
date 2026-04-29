@@ -9,6 +9,7 @@ import test from 'node:test';
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const cliPath = join(repoRoot, 'dist', 'cli.js');
 const env = { ...process.env, NIT_NO_AUTO_UPDATE: '1', CI: 'true' };
+const stripAnsi = (s) => s.replace(/\x1b\[[0-9;]*m/g, '');
 
 function workspace(prefix) {
   const dir = mkdtempSync(join(tmpdir(), prefix));
@@ -25,7 +26,7 @@ function runNit(cwd, args) {
 }
 
 function initWorkspace(cwd) {
-  const result = runNit(cwd, ['init']);
+  const result = runNit(cwd, ['init', '--skill-source', 'embedded']);
   assert.equal(result.status, 0, result.stderr || result.stdout);
 }
 
@@ -135,6 +136,87 @@ test('init fails before creating .nit when existing card lacks required fields',
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /missing "name"/);
   assert.equal(existsSync(join(cwd, '.nit')), false);
+});
+
+test('init uses Newtype as the default nit skill source', async () => {
+  const cwd = workspace('nit-skill-default-');
+  const api = await import(pathToFileURL(join(repoRoot, 'dist', 'index.js')).href);
+  const oldFetch = globalThis.fetch;
+  const remoteSkill = `---\nname: nit\ndescription: remote nit skill\n---\n\n# Remote nit skill\n`;
+  const seenUrls = [];
+
+  globalThis.fetch = async (url) => {
+    seenUrls.push(String(url));
+    return new Response(remoteSkill, {
+      status: 200,
+      headers: { 'content-type': 'text/markdown' },
+    });
+  };
+
+  try {
+    const result = await api.init({ projectDir: cwd });
+    assert.equal(result.nitSkillSource, 'newtype');
+    assert.equal(result.nitSkillUrl, api.DEFAULT_NIT_SKILL_URL);
+    assert.deepEqual(seenUrls, [api.DEFAULT_NIT_SKILL_URL]);
+    assert.equal(readFileSync(result.nitSkillPath, 'utf8'), remoteSkill);
+    const config = readFileSync(join(cwd, '.nit', 'config'), 'utf8');
+    assert.match(config, /\[nit "skill"\]/);
+    assert.match(config, /source = newtype/);
+    assert.match(config, /url = https:\/\/api\.newtype-ai\.org\/nit\/skill\.md/);
+  } finally {
+    globalThis.fetch = oldFetch;
+  }
+});
+
+test('init can skip installing the nit skill without deleting features', () => {
+  const cwd = workspace('nit-skill-none-');
+  const result = runNit(cwd, ['init', '--skill-source', 'none']);
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  const plain = stripAnsi(result.stdout);
+  assert.match(plain, /nit skill:\s+\(not installed\)/);
+  assert.doesNotMatch(plain, /cat .*SKILL\.md/);
+  assert.equal(existsSync(join(cwd, '.claude', 'skills', 'nit', 'SKILL.md')), false);
+  const config = readFileSync(join(cwd, '.nit', 'config'), 'utf8');
+  assert.match(config, /source = none/);
+});
+
+test('skill refresh can switch between embedded and custom URL sources', async () => {
+  const cwd = workspace('nit-skill-refresh-');
+  initWorkspace(cwd);
+  const api = await import(pathToFileURL(join(repoRoot, 'dist', 'index.js')).href);
+  const skillPath = join(cwd, '.claude', 'skills', 'nit', 'SKILL.md');
+  const remoteSkill = `---\nname: nit\ndescription: custom nit skill\n---\n\n# Custom nit skill\n`;
+  const oldFetch = globalThis.fetch;
+
+  globalThis.fetch = async (url) => {
+    assert.equal(String(url), 'http://skill.test/nit.md');
+    return new Response(remoteSkill, {
+      status: 200,
+      headers: { 'content-type': 'text/markdown' },
+    });
+  };
+
+  try {
+    const custom = await api.skillRefresh({
+      projectDir: cwd,
+      skillUrl: 'http://skill.test/nit.md',
+    });
+    assert.equal(custom.config.source, 'url');
+    assert.equal(custom.config.url, 'http://skill.test/nit.md');
+    assert.equal(readFileSync(skillPath, 'utf8'), remoteSkill);
+    let config = readFileSync(join(cwd, '.nit', 'config'), 'utf8');
+    assert.match(config, /source = url/);
+    assert.match(config, /url = http:\/\/skill\.test\/nit\.md/);
+
+    const embedded = runNit(cwd, ['skill', 'refresh', '--source', 'embedded']);
+    assert.equal(embedded.status, 0, embedded.stderr || embedded.stdout);
+    assert.match(readFileSync(skillPath, 'utf8'), /# nit — Git for Agent Identity/);
+    config = readFileSync(join(cwd, '.nit', 'config'), 'utf8');
+    assert.match(config, /source = embedded/);
+    assert.doesNotMatch(config, /url = http:\/\/skill\.test\/nit\.md/);
+  } finally {
+    globalThis.fetch = oldFetch;
+  }
 });
 
 test('push and pull exit nonzero on network failures', () => {

@@ -442,6 +442,8 @@ All commands run in a directory containing `agent-card.json` and `.nit/`.
 | Command | Description |
 |---------|-------------|
 | `nit init` | Initialize `.nit/` directory, generate Ed25519 keypair, create initial commit from `agent-card.json` |
+| `nit init --skill-source <source>` | Choose nit SKILL.md source: `newtype`, `embedded`, `none`, or `url` |
+| `nit init --skill-url <url>` | Fetch nit SKILL.md from a compatible custom URL |
 | `nit status` | Show agent ID, public key, card URL, current branch, uncommitted changes, and branch sync status |
 | `nit commit -m "message"` | Snapshot current `agent-card.json` as a new commit on the current branch |
 | `nit log` | Show commit history for the current branch |
@@ -467,6 +469,7 @@ All commands run in a directory containing `agent-card.json` and `.nit/`.
 | `nit rpc set-url <chain> <url>` | Set RPC endpoint for a chain (stored in `.nit/config` under `[rpc "chain"]`) |
 | `nit auth set <domain> --provider <p> --account <a>` | Configure OAuth consent instructions for a domain branch. Generates SKILL.md with two-stage auth flow (session reuse + OAuth consent). Providers: `google`, `github`, `x` |
 | `nit auth show [domain]` | Show OAuth auth config for a specific branch, or all branches with auth configured |
+| `nit skill refresh [--source <source>] [--url <url>]` | Refresh nit SKILL.md from configured or specified source |
 
 ---
 

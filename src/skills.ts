@@ -24,7 +24,15 @@
 import { promises as fs } from 'node:fs';
 import { join, basename, dirname, resolve } from 'node:path';
 import { homedir } from 'node:os';
-import type { AgentCard, AuthConfig, AuthProvider, SkillMetadata } from './types.js';
+import type {
+  AgentCard,
+  AuthConfig,
+  AuthProvider,
+  NitSkillConfig,
+  NitSkillSource,
+  SkillMetadata,
+} from './types.js';
+import { validateHttpUrl } from './validation.js';
 
 // ---------------------------------------------------------------------------
 // Framework detection and skills directory discovery
@@ -258,50 +266,123 @@ export async function resolveSkillPointers(
 // nit's own SKILL.md — placed in skills directory during init
 // ---------------------------------------------------------------------------
 
+export const DEFAULT_NIT_SKILL_URL = 'https://api.newtype-ai.org/nit/skill.md';
+
+export interface NitSkillOptions {
+  skillSource?: NitSkillSource;
+  skillUrl?: string;
+}
+
+export interface NitSkillInstallResult {
+  path: string | null;
+  source: NitSkillSource;
+  url?: string;
+  contentSource: NitSkillSource;
+  created: boolean;
+}
+
+export function normalizeNitSkillConfig(options?: NitSkillOptions): NitSkillConfig {
+  let source = options?.skillSource;
+  const url = options?.skillUrl;
+
+  if (!source) {
+    source = url ? 'url' : 'newtype';
+  }
+
+  if (!['newtype', 'url', 'embedded', 'none'].includes(source)) {
+    throw new Error('nit skill source must be one of: newtype, url, embedded, none');
+  }
+  if ((source === 'embedded' || source === 'none') && url) {
+    throw new Error(`nit skill source "${source}" must not set a URL`);
+  }
+  if (source === 'url' && !url) {
+    throw new Error('nit skill source "url" requires --skill-url');
+  }
+  if (url) {
+    validateHttpUrl(url, 'nit skill URL');
+  }
+
+  if (source === 'newtype') {
+    return { source, url: url ?? DEFAULT_NIT_SKILL_URL };
+  }
+  if (source === 'url') {
+    return { source, url };
+  }
+  return { source };
+}
+
 /**
- * Create the nit skill in the agent's skills directory.
+ * Create or refresh the nit skill in the agent's skills directory.
  *
- * Tries to fetch the latest from https://api.newtype-ai.org/nit/skill.md.
- * Falls back to a minimal embedded template covering the essentials.
- *
- * Returns the path to the created SKILL.md.
+ * Newtype is the default source. Remote sources fall back to the embedded
+ * template if unavailable; "embedded" is local-only; "none" leaves files alone.
  */
-export async function createNitSkill(skillsDir: string): Promise<string> {
+export async function createNitSkill(
+  skillsDir: string,
+  options?: NitSkillOptions & { overwrite?: boolean },
+): Promise<NitSkillInstallResult> {
+  const config = normalizeNitSkillConfig(options);
+  if (config.source === 'none') {
+    return {
+      path: null,
+      source: config.source,
+      contentSource: 'none',
+      created: false,
+    };
+  }
+
   const skillDir = join(skillsDir, 'nit');
   const skillPath = join(skillDir, 'SKILL.md');
 
-  // Don't overwrite if it already exists
-  try {
-    await fs.access(skillPath);
-    return skillPath;
-  } catch {
-    // Doesn't exist — create it
+  if (!options?.overwrite) {
+    try {
+      await fs.access(skillPath);
+      return {
+        path: skillPath,
+        source: config.source,
+        url: config.url,
+        contentSource: config.source,
+        created: false,
+      };
+    } catch {
+      // Doesn't exist — create it
+    }
   }
 
-  // Try to fetch the latest from the web
   let content: string | null = null;
-  try {
-    const res = await fetch('https://api.newtype-ai.org/nit/skill.md', {
-      headers: { 'Accept': 'text/markdown, text/plain' },
-      signal: AbortSignal.timeout(5000),
-    });
-    if (res.ok) {
-      const text = await res.text();
-      if (text.startsWith('---')) {
-        content = text;
+  let contentSource: NitSkillSource = config.source;
+
+  if (config.source === 'newtype' || config.source === 'url') {
+    try {
+      const res = await fetch(config.url ?? DEFAULT_NIT_SKILL_URL, {
+        headers: { 'Accept': 'text/markdown, text/plain' },
+        signal: AbortSignal.timeout(5000),
+      });
+      if (res.ok) {
+        const text = await res.text();
+        if (text.startsWith('---')) {
+          content = text;
+        }
       }
+    } catch {
+      // Offline — fall through to embedded template
     }
-  } catch {
-    // Offline — fall through to embedded template
   }
 
   if (!content) {
     content = nitSkillFallback();
+    contentSource = 'embedded';
   }
 
   await fs.mkdir(skillDir, { recursive: true });
   await fs.writeFile(skillPath, content, 'utf-8');
-  return skillPath;
+  return {
+    path: skillPath,
+    source: config.source,
+    url: config.url,
+    contentSource,
+    created: true,
+  };
 }
 
 /** Minimal nit SKILL.md covering the essential knowledge an agent needs. */
@@ -322,6 +403,7 @@ nit init                     # generate identity + agent-card.json
 nit commit -m "Set up"       # snapshot your card
 nit push                     # publish to remote
 nit sign --login <domain>    # switch to domain branch + generate login payload
+nit verify-login login.json --card agent-card.json --domain <domain>
 \`\`\`
 
 ## Browser Authentication (OAuth)
@@ -345,6 +427,7 @@ Most apps don't support nit-native login yet. For these, use the human's existin
 | \`nit pull [--all]\` | Pull from remote |
 | \`nit sign --login <domain>\` | Switch to domain branch + login payload |
 | \`nit verify-login <payload.json> --card <card.json>\` | Verify a login payload locally |
+| \`nit skill refresh [--source <source>] [--url <url>]\` | Refresh nit SKILL.md |
 | \`nit branch [name]\` | List or create branches |
 | \`nit branch -d <name>\` | Delete local branch |
 | \`nit branch -D <name>\` | Delete local + remote branch |

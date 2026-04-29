@@ -56,12 +56,25 @@ export interface NitRpcConfig {
   url: string;
 }
 
+/** Where nit's own SKILL.md should come from. */
+export type NitSkillSource = 'newtype' | 'url' | 'embedded' | 'none';
+
+/** Configuration for the bundled nit skill installed into the skills dir. */
+export interface NitSkillConfig {
+  /** Default is "newtype"; "url" uses a custom URL; "embedded" is local-only; "none" disables install/refresh. */
+  source: NitSkillSource;
+  /** Remote SKILL.md URL for "newtype" or "url" sources. */
+  url?: string;
+}
+
 /** Full .nit/config file contents. */
 export interface NitConfig {
   /** Keyed by remote name (e.g. "origin") */
   remotes: Record<string, NitRemoteConfig>;
   /** Discovered skills directory path */
   skillsDir?: string;
+  /** Source configuration for nit's own SKILL.md. */
+  nitSkill?: NitSkillConfig;
   /** RPC endpoints keyed by chain name (e.g. "evm", "solana") */
   rpc?: Record<string, NitRpcConfig>;
   /** Self-declared LLM runtime (injected into card at commit time). */

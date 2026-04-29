@@ -345,9 +345,13 @@ INI format, same concept as `.git/config`.
 
 [skills]
   dir = /Users/alice/.claude/skills
+
+[nit "skill"]
+  source = newtype
+  url = https://api.newtype-ai.org/nit/skill.md
 ```
 
-Sections: `[remote "name"]` (push/pull URLs), `[rpc "chain"]` (transaction broadcast endpoints), `[skills]` (discovered skills directory path).
+Sections: `[remote "name"]` (push/pull URLs), `[rpc "chain"]` (transaction broadcast endpoints), `[skills]` (discovered skills directory path), `[nit "skill"]` (source for nit's own SKILL.md). Newtype is the default source; use `embedded`, `none`, or a custom `url` when needed.
 
 ---
 

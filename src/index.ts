@@ -24,6 +24,8 @@ import {
   type AgentRuntime,
   type LoginPayload,
   type LoginVerificationResult,
+  type NitSkillConfig,
+  type NitSkillSource,
 } from './types.js';
 import {
   hashObject,
@@ -57,7 +59,19 @@ import {
   verifySignature,
   loadRawKeyPair,
 } from './identity.js';
-import { discoverSkills, discoverSkillsDir, resolveSkillPointers, createSkillTemplate, updateSkillAuth, readSkillAuth, createNitSkill } from './skills.js';
+import {
+  discoverSkills,
+  discoverSkillsDir,
+  resolveSkillPointers,
+  createSkillTemplate,
+  updateSkillAuth,
+  readSkillAuth,
+  createNitSkill,
+  normalizeNitSkillConfig,
+  DEFAULT_NIT_SKILL_URL,
+  type NitSkillInstallResult,
+  type NitSkillOptions,
+} from './skills.js';
 import { getWalletAddresses, getSolanaAddress, getEvmAddress, loadSecp256k1RawKeyPair } from './wallet.js';
 import { diffCards } from './diff.js';
 import {
@@ -107,6 +121,8 @@ export type {
   StatusResult,
   LoginPayload,
   LoginVerificationResult,
+  NitSkillConfig,
+  NitSkillSource,
   SkillMetadata,
   WalletAddresses,
   IdentityMetadata,
@@ -116,6 +132,8 @@ export type {
 
 // Re-export selected utilities
 export { diffCards, formatDiff } from './diff.js';
+export { DEFAULT_NIT_SKILL_URL, normalizeNitSkillConfig } from './skills.js';
+export type { NitSkillInstallResult, NitSkillOptions } from './skills.js';
 export {
   signChallenge,
   signMessage,
@@ -280,7 +298,9 @@ export interface InitResult {
   walletAddresses: WalletAddresses;
   skillsFound: string[];
   skillsDir: string;
-  nitSkillPath: string;
+  nitSkillPath: string | null;
+  nitSkillSource: NitSkillSource;
+  nitSkillUrl?: string;
 }
 
 /**
@@ -293,7 +313,7 @@ export interface InitResult {
  */
 export async function init(options?: {
   projectDir?: string;
-}): Promise<InitResult> {
+} & NitSkillOptions): Promise<InitResult> {
   const projDir = resolve(options?.projectDir || process.cwd());
   const nitDir = join(projDir, NIT_DIR);
   const cardPath = join(projDir, CARD_FILE);
@@ -416,14 +436,20 @@ export async function init(options?: {
   // Discover and store skills directory
   const skillsDir = await discoverSkillsDir(projDir);
 
+  const nitSkillConfig = normalizeNitSkillConfig(options);
+
   // Write default config with remote + skills dir
   await writeConfig(nitDir, {
     remotes: { origin: { url: DEFAULT_API_BASE } },
     skillsDir,
+    nitSkill: nitSkillConfig,
   });
 
   // Place nit's own SKILL.md in the skills directory
-  const nitSkillPath = await createNitSkill(skillsDir);
+  const nitSkill = await createNitSkill(skillsDir, {
+    skillSource: nitSkillConfig.source,
+    skillUrl: nitSkillConfig.url,
+  });
 
   return {
     agentId,
@@ -432,7 +458,51 @@ export async function init(options?: {
     walletAddresses,
     skillsFound,
     skillsDir,
-    nitSkillPath,
+    nitSkillPath: nitSkill.path,
+    nitSkillSource: nitSkill.source,
+    nitSkillUrl: nitSkill.url,
+  };
+}
+
+export interface NitSkillRefreshResult extends NitSkillInstallResult {
+  skillsDir: string;
+  config: NitSkillConfig;
+}
+
+/**
+ * Refresh nit's own SKILL.md from the configured source.
+ *
+ * New workspaces default to Newtype. Older workspaces without this config are
+ * treated the same way, then persisted with the default.
+ */
+export async function skillRefresh(
+  options?: { projectDir?: string } & NitSkillOptions,
+): Promise<NitSkillRefreshResult> {
+  const nitDir = findNitDir(options?.projectDir);
+  const projDir = projectDir(nitDir);
+  const currentConfig = await readConfig(nitDir);
+  const hasOverride = options?.skillSource !== undefined || options?.skillUrl !== undefined;
+  const nitSkillConfig = hasOverride
+    ? normalizeNitSkillConfig(options)
+    : currentConfig.nitSkill ?? normalizeNitSkillConfig();
+  const skillsDir = currentConfig.skillsDir ?? await discoverSkillsDir(projDir);
+
+  if (hasOverride || !currentConfig.nitSkill || !currentConfig.skillsDir) {
+    currentConfig.skillsDir = skillsDir;
+    currentConfig.nitSkill = nitSkillConfig;
+    await writeConfig(nitDir, currentConfig);
+  }
+
+  const result = await createNitSkill(skillsDir, {
+    skillSource: nitSkillConfig.source,
+    skillUrl: nitSkillConfig.url,
+    overwrite: true,
+  });
+
+  return {
+    ...result,
+    skillsDir,
+    config: nitSkillConfig,
   };
 }
 

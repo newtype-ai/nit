@@ -13,7 +13,14 @@
 
 import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
-import type { AgentRuntime, NitConfig, NitRemoteConfig, NitRpcConfig } from './types.js';
+import type {
+  AgentRuntime,
+  NitConfig,
+  NitRemoteConfig,
+  NitRpcConfig,
+  NitSkillConfig,
+  NitSkillSource,
+} from './types.js';
 import {
   validateConfigValue,
   validateHttpUrl,
@@ -22,6 +29,7 @@ import {
 } from './validation.js';
 
 const CONFIG_FILE = 'config';
+const NIT_SKILL_SOURCES: NitSkillSource[] = ['newtype', 'url', 'embedded', 'none'];
 
 /**
  * Read and parse the .nit/config file.
@@ -138,6 +146,38 @@ export async function setSkillsDir(
   await writeConfig(nitDir, config);
 }
 
+export function validateNitSkillConfig(config: NitSkillConfig): void {
+  if (!NIT_SKILL_SOURCES.includes(config.source)) {
+    throw new Error(`nit skill source must be one of: ${NIT_SKILL_SOURCES.join(', ')}`);
+  }
+  if ((config.source === 'newtype' || config.source === 'url') && config.url) {
+    validateHttpUrl(config.url, 'nit skill URL');
+  }
+  if ((config.source === 'embedded' || config.source === 'none') && config.url) {
+    throw new Error(`nit skill source "${config.source}" must not set a URL`);
+  }
+  if (config.source === 'url' && !config.url) {
+    throw new Error('nit skill source "url" requires a URL');
+  }
+}
+
+export async function getNitSkillConfig(
+  nitDir: string,
+): Promise<NitSkillConfig | null> {
+  const config = await readConfig(nitDir);
+  return config.nitSkill ?? null;
+}
+
+export async function setNitSkillConfig(
+  nitDir: string,
+  nitSkill: NitSkillConfig,
+): Promise<void> {
+  validateNitSkillConfig(nitSkill);
+  const config = await readConfig(nitDir);
+  config.nitSkill = nitSkill;
+  await writeConfig(nitDir, config);
+}
+
 /**
  * Get the RPC URL for a chain, or null if not set.
  */
@@ -244,7 +284,9 @@ function parseConfig(raw: string): NitConfig {
   let currentSection: string | null = null;
   let currentRemote: string | null = null;
   let currentRpcChain: string | null = null;
+  let currentNitSubsection: string | null = null;
   let skillsDir: string | undefined;
+  const nitSkillFields: Partial<Record<'source' | 'url', string>> = {};
   const runtimeFields: Partial<Record<'provider' | 'model' | 'harness' | 'declared_at', string>> = {};
 
   for (const line of raw.split('\n')) {
@@ -259,6 +301,7 @@ function parseConfig(raw: string): NitConfig {
       currentSection = 'remote';
       currentRemote = remoteMatch[1];
       currentRpcChain = null;
+      currentNitSubsection = null;
       if (!remotes[currentRemote]) {
         remotes[currentRemote] = {};
       }
@@ -271,6 +314,17 @@ function parseConfig(raw: string): NitConfig {
       currentSection = 'rpc';
       currentRpcChain = rpcMatch[1];
       currentRemote = null;
+      currentNitSubsection = null;
+      continue;
+    }
+
+    // Section header: [nit "skill"]
+    const nitMatch = trimmed.match(/^\[nit\s+"([^"]+)"\]$/);
+    if (nitMatch) {
+      currentSection = 'nit';
+      currentNitSubsection = nitMatch[1];
+      currentRemote = null;
+      currentRpcChain = null;
       continue;
     }
 
@@ -279,6 +333,7 @@ function parseConfig(raw: string): NitConfig {
       currentSection = 'skills';
       currentRemote = null;
       currentRpcChain = null;
+      currentNitSubsection = null;
       continue;
     }
 
@@ -287,6 +342,7 @@ function parseConfig(raw: string): NitConfig {
       currentSection = 'runtime';
       currentRemote = null;
       currentRpcChain = null;
+      currentNitSubsection = null;
       continue;
     }
 
@@ -312,6 +368,10 @@ function parseConfig(raw: string): NitConfig {
         if (key === 'provider' || key === 'model' || key === 'harness' || key === 'declared_at') {
           runtimeFields[key] = value.trim();
         }
+      } else if (currentSection === 'nit' && currentNitSubsection === 'skill') {
+        if (key === 'source' || key === 'url') {
+          nitSkillFields[key] = value.trim();
+        }
       }
     }
   }
@@ -330,6 +390,16 @@ function parseConfig(raw: string): NitConfig {
         declared_at: declaredAt,
       };
     }
+  }
+  if (nitSkillFields.source) {
+    const nitSkill: NitSkillConfig = {
+      source: nitSkillFields.source as NitSkillSource,
+    };
+    if (nitSkillFields.url) {
+      nitSkill.url = nitSkillFields.url;
+    }
+    validateNitSkillConfig(nitSkill);
+    config.nitSkill = nitSkill;
   }
   return config;
 }
@@ -365,6 +435,16 @@ function serializeConfig(config: NitConfig): string {
     validateConfigValue(config.skillsDir, 'Skills directory');
     lines.push('[skills]');
     lines.push(`  dir = ${config.skillsDir}`);
+    lines.push('');
+  }
+
+  if (config.nitSkill) {
+    validateNitSkillConfig(config.nitSkill);
+    lines.push('[nit "skill"]');
+    lines.push(`  source = ${config.nitSkill.source}`);
+    if (config.nitSkill.url) {
+      lines.push(`  url = ${config.nitSkill.url}`);
+    }
     lines.push('');
   }
 

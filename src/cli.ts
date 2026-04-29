@@ -35,9 +35,10 @@ import {
   show,
   pull,
   verifyLoginPayload,
+  skillRefresh,
   findNitDir,
 } from './index.js';
-import type { AuthProvider } from './types.js';
+import type { AuthProvider, NitSkillSource } from './types.js';
 import { formatDiff } from './diff.js';
 import { autoUpdate, version as nitVersion } from './update-check.js';
 import { loadMachineHash } from './fingerprint.js';
@@ -60,7 +61,7 @@ async function main() {
   try {
     switch (command) {
       case 'init':
-        await cmdInit();
+        await cmdInit(args);
         break;
       case 'status':
         await cmdStatus();
@@ -103,6 +104,9 @@ async function main() {
         break;
       case 'auth':
         await cmdAuth(args);
+        break;
+      case 'skill':
+        await cmdSkill(args);
         break;
       case 'wallet':
         await cmdWallet();
@@ -154,8 +158,46 @@ async function main() {
 
 declare const __NIT_INSTALL_COUNT__: number;
 
-async function cmdInit() {
-  const result = await init();
+function parseNitSkillSource(value: string): NitSkillSource {
+  if (value === 'newtype' || value === 'url' || value === 'embedded' || value === 'none') {
+    return value;
+  }
+  throw new Error('nit skill source must be one of: newtype, url, embedded, none');
+}
+
+function parseSkillOptions(
+  args: string[],
+  names: { source: string; url: string },
+): { skillSource?: NitSkillSource; skillUrl?: string } {
+  let skillSource: NitSkillSource | undefined;
+  let skillUrl: string | undefined;
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === names.source) {
+      if (!args[i + 1]) {
+        throw new Error(`Missing value for ${names.source}`);
+      }
+      skillSource = parseNitSkillSource(args[++i]);
+    } else if (arg === names.url) {
+      if (!args[i + 1]) {
+        throw new Error(`Missing value for ${names.url}`);
+      }
+      skillUrl = args[++i];
+    } else {
+      throw new Error(`Unknown flag: ${arg}`);
+    }
+  }
+
+  return { skillSource, skillUrl };
+}
+
+async function cmdInit(args: string[]) {
+  const skillOptions = parseSkillOptions(args, {
+    source: '--skill-source',
+    url: '--skill-url',
+  });
+  const result = await init(skillOptions);
 
   console.log();
   console.log(dim('  _   _                 _____'));
@@ -186,12 +228,15 @@ async function cmdInit() {
     console.log(`  Skills:      ${dim('(none discovered)')}`);
   }
   console.log();
-  console.log(`  nit skill:   ${dim(result.nitSkillPath)}`);
+  console.log(`  nit skill:   ${result.nitSkillPath ? dim(result.nitSkillPath) : dim('(not installed)')}`);
+  console.log(`  Skill source:${dim(` ${result.nitSkillSource}${result.nitSkillUrl ? ` (${result.nitSkillUrl})` : ''}`)}`);
   console.log();
   console.log(dim('Created .nit/ with initial commit on main.'));
   console.log();
-  console.log(`IMPORTANT: Read the nit skill file for complete usage instructions:`);
-  console.log(`  cat ${result.nitSkillPath}`);
+  if (result.nitSkillPath) {
+    console.log(`IMPORTANT: Read the nit skill file for complete usage instructions:`);
+    console.log(`  cat ${result.nitSkillPath}`);
+  }
 }
 
 async function cmdStatus() {
@@ -830,6 +875,34 @@ async function cmdAuth(args: string[]) {
   process.exit(1);
 }
 
+async function cmdSkill(args: string[]) {
+  const subcommand = args[0];
+
+  if (subcommand === 'refresh') {
+    const skillOptions = parseSkillOptions(args.slice(1), {
+      source: '--source',
+      url: '--url',
+    });
+    const result = await skillRefresh(skillOptions);
+    if (!result.path) {
+      console.log(dim('nit skill source is disabled; existing files left untouched.'));
+      return;
+    }
+    console.log(`${green('✓')} nit skill refreshed: ${result.path}`);
+    console.log(dim(`  source = ${result.config.source}${result.config.url ? ` (${result.config.url})` : ''}`));
+    if (result.contentSource !== result.config.source) {
+      console.log(dim(`  content = ${result.contentSource}`));
+    }
+    return;
+  }
+
+  if (subcommand) {
+    console.error(`nit skill: unknown subcommand '${subcommand}'`);
+  }
+  console.error('Usage: nit skill refresh [--source <newtype|url|embedded|none>] [--url <url>]');
+  process.exit(1);
+}
+
 // ---------------------------------------------------------------------------
 // Chain address card display
 // ---------------------------------------------------------------------------
@@ -926,6 +999,10 @@ ${bold('Usage:')} nit <command> [options]
 
 ${bold('Commands:')}
   init               Initialize .nit/ in current directory
+  init --skill-source <newtype|embedded|none|url>
+                     Choose nit SKILL.md source (default: newtype)
+  init --skill-url <url>
+                     Fetch nit SKILL.md from a custom URL
   status             Show identity, branch, and uncommitted changes
   commit -m "msg"    Snapshot agent-card.json
   log                Show commit history
@@ -957,6 +1034,9 @@ ${bold('Commands:')}
   auth set <dom> --provider <p> --account <a>
                      Configure OAuth auth for a branch
   auth show [dom]    Show auth config for branch(es)
+  skill refresh      Refresh nit SKILL.md from configured source
+  skill refresh --source <newtype|embedded|none|url> [--url <url>]
+                     Update the source and refresh nit SKILL.md
 
 ${bold('Examples:')}
   nit init

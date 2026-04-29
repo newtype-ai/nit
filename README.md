@@ -40,6 +40,10 @@ npx @newtype-ai/nit init
 # Initialize — generates Ed25519 keypair + initial agent-card.json
 nit init
 
+# Optional: choose where nit's own SKILL.md comes from
+nit init --skill-source embedded
+nit init --skill-url https://my-server.com/nit/skill.md
+
 # Create a platform-specific branch
 nit branch faam.io
 nit checkout faam.io
@@ -97,6 +101,16 @@ Auto-discovers skills from major agent frameworks:
 nit remote set-url origin https://my-server.com
 ```
 
+Newtype is also the default source for nit's own SKILL.md during `nit init`. Keep the default, use a compatible URL, use the embedded copy, or skip installing it:
+
+```bash
+nit init --skill-source newtype
+nit init --skill-url https://my-server.com/nit/skill.md
+nit init --skill-source embedded
+nit init --skill-source none
+nit skill refresh --source embedded
+```
+
 ### Zero runtime dependencies
 
 Pure Node.js builtins. No bloat.
@@ -106,6 +120,8 @@ Pure Node.js builtins. No bloat.
 | Command | Description |
 |---------|-------------|
 | `nit init` | Create `.nit/`, generate Ed25519 keypair, initial commit |
+| `nit init --skill-source <source>` | Choose nit SKILL.md source: `newtype`, `embedded`, `none`, or `url` |
+| `nit init --skill-url <url>` | Fetch nit SKILL.md from a compatible custom URL |
 | `nit status` | Identity info, current branch, chain addresses, uncommitted changes |
 | `nit commit -m "msg"` | Snapshot agent-card.json |
 | `nit log` | Commit history for current branch |
@@ -131,6 +147,7 @@ Pure Node.js builtins. No bloat.
 | `nit rpc set-url <chain> <url>` | Set RPC endpoint for a chain |
 | `nit auth set <domain> --provider <p> --account <a>` | Configure OAuth auth for a domain branch |
 | `nit auth show [domain]` | Show auth config for branch(es) |
+| `nit skill refresh [--source <source>] [--url <url>]` | Refresh nit SKILL.md from configured or specified source |
 
 ## How It Works
 
@@ -204,11 +221,12 @@ your-project/
 ```typescript
 import {
   init, commit, checkout, branch, push, status, sign, loginPayload,
-  verifyLoginPayload, loadRawKeyPair, getWalletAddresses, signTx, rpcSetUrl,
+  verifyLoginPayload, skillRefresh, loadRawKeyPair, getWalletAddresses, signTx, rpcSetUrl,
   authSet, authShow, reset, show, pull,
 } from '@newtype-ai/nit';
 
-await init();
+await init({ skillSource: 'newtype' });
+await skillRefresh({ skillSource: 'embedded' });
 
 // Log into an app (auto-creates and switches to domain branch)
 const payload = await loginPayload('faam.io');
