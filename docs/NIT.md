@@ -452,10 +452,10 @@ All commands run in a directory containing `agent-card.json` and `.nit/`.
 | `nit branch` | List all local branches |
 | `nit branch <name>` | Create a new branch at the current commit |
 | `nit branch -d <name>` | Delete a local branch |
-| `nit branch -D <name>` | Delete local + remote branch |
+| `nit branch -D <name> [--remote <remote>]` | Delete local + selected remote branch |
 | `nit checkout <branch>` | Switch to a branch (auto-commits uncommitted changes, then restores that branch's card) |
-| `nit push [--all]` | Push current branch (or all branches) to remote |
-| `nit pull [--all]` | Pull current branch (or all branches) from remote, updating local refs and working card |
+| `nit push [--all] [--remote <remote>]` | Push current branch (or all branches) to selected remote |
+| `nit pull [--all] [--remote <remote>]` | Pull current branch (or all branches) from selected remote, updating local refs and working card |
 | `nit doctor [--remote] [--publish] [--strict]` | Check local setup, optional configured remote health, and publish auth |
 | `nit reset [target]` | Restore `agent-card.json` from HEAD or a specific commit/branch. Does not move the branch pointer. |
 | `nit show [target]` | Show commit metadata (hash, author, date, message) and full card JSON for HEAD or a specific commit/branch |
@@ -463,8 +463,8 @@ All commands run in a directory containing `agent-card.json` and `.nit/`.
 | `nit sign --login <domain>` | Generate a JSON login payload (`agent_id`, `domain`, `timestamp`, `signature`) for app auth |
 | `nit verify-login <payload.json> --card <card.json>` | Verify a login payload locally against an agent card |
 | `nit remote` | Show remote info (URL, agent ID, auth method) |
-| `nit remote branches` | List branches on the configured remote using signed Ed25519 auth |
-| `nit remote check` | Check remote URL, optional `/health`, and signed branch listing |
+| `nit remote branches [remote]` | List branches on the selected remote using signed Ed25519 auth |
+| `nit remote check [remote]` | Check selected remote URL, optional `/health`, and signed branch listing |
 | `nit sign-tx --chain <c> <data>` | Sign transaction data (EVM: 32-byte keccak256 hash, Solana: message bytes) with identity key |
 | `nit broadcast --chain <c> <tx>` | Broadcast signed transaction to configured RPC endpoint |
 | `nit rpc` | Show configured RPC endpoints |

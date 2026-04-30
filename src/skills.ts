@@ -423,12 +423,12 @@ Most apps don't support nit-native login yet. For these, use the human's existin
 | \`nit init\` | Create identity |
 | \`nit status\` | Show identity, branch, wallet addresses |
 | \`nit commit -m "msg"\` | Snapshot agent-card.json |
-| \`nit push [--all]\` | Push to remote |
-| \`nit pull [--all]\` | Pull from remote |
+| \`nit push [--all] [--remote <remote>]\` | Push to remote |
+| \`nit pull [--all] [--remote <remote>]\` | Pull from remote |
 | \`nit sign --login <domain>\` | Switch to domain branch + login payload |
 | \`nit verify-login <payload.json> --card <card.json>\` | Verify a login payload locally |
-| \`nit remote branches\` | List pushed remote branches |
-| \`nit remote check\` | Check remote health and branch listing |
+| \`nit remote branches [remote]\` | List pushed remote branches |
+| \`nit remote check [remote]\` | Check remote health and branch listing |
 | \`nit skill refresh [--source <source>] [--url <url>]\` | Refresh nit SKILL.md |
 | \`nit branch [name]\` | List or create branches |
 | \`nit branch -d <name>\` | Delete local branch |

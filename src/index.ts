@@ -180,6 +180,18 @@ function cardReadBaseUrl(apiBase: string, agentId: string): string {
   return normalized;
 }
 
+async function resolveRemoteUrl(nitDir: string, remoteName: string): Promise<string> {
+  validateRemoteName(remoteName);
+  const remoteUrl = await getRemoteUrl(nitDir, remoteName);
+  if (remoteUrl) {
+    return remoteUrl;
+  }
+  if (remoteName === 'origin') {
+    return DEFAULT_API_BASE;
+  }
+  throw new Error(`Remote "${remoteName}" does not exist. Use 'nit remote add ${remoteName} <url>' to create it.`);
+}
+
 /**
  * Validate and auto-fill required agent card fields.
  * Enforces A2A-required fields. Auto-fills protocolVersion and modes if missing.
@@ -1043,7 +1055,7 @@ export async function branch(
  */
 export async function branchDelete(
   name: string,
-  options?: { projectDir?: string; remote?: boolean },
+  options?: { projectDir?: string; remote?: boolean; remoteName?: string },
 ): Promise<void> {
   validateBranchName(name);
   const nitDir = findNitDir(options?.projectDir);
@@ -1063,8 +1075,9 @@ export async function branchDelete(
   }
 
   // Delete from remote server if requested
+  const remoteName = options?.remoteName || 'origin';
   if (options?.remote) {
-    const apiBase = (await getRemoteUrl(nitDir, 'origin')) || DEFAULT_API_BASE;
+    const apiBase = await resolveRemoteUrl(nitDir, remoteName);
     await deleteRemoteBranch(nitDir, apiBase, name);
   }
 
@@ -1073,7 +1086,7 @@ export async function branchDelete(
   await deleteLocalBranch(nitDir, name);
 
   // Clean up remote-tracking ref
-  await deleteRemoteRef(nitDir, 'origin', name);
+  await deleteRemoteRef(nitDir, remoteName, name);
 }
 
 // ---------------------------------------------------------------------------
@@ -1144,8 +1157,7 @@ export async function push(options?: {
 }): Promise<PushResult[]> {
   const nitDir = findNitDir(options?.projectDir);
   const remoteName = options?.remoteName || 'origin';
-  validateRemoteName(remoteName);
-  const apiBase = (await getRemoteUrl(nitDir, remoteName)) || DEFAULT_API_BASE;
+  const apiBase = await resolveRemoteUrl(nitDir, remoteName);
   const branches = await listAllBranches(nitDir);
   const currentBranch = await getCurrentBranch(nitDir);
 
@@ -1203,14 +1215,16 @@ export interface RemoteInfo {
  */
 export async function remote(options?: {
   projectDir?: string;
+  remoteName?: string;
 }): Promise<RemoteInfo> {
   const nitDir = findNitDir(options?.projectDir);
-  const remoteUrl = await getRemoteUrl(nitDir, 'origin');
+  const remoteName = options?.remoteName || 'origin';
+  const remoteUrl = await resolveRemoteUrl(nitDir, remoteName);
   const agentId = await loadAgentId(nitDir);
 
   return {
-    name: 'origin',
-    url: remoteUrl || DEFAULT_API_BASE,
+    name: remoteName,
+    url: remoteUrl,
     agentId,
   };
 }
@@ -1221,8 +1235,7 @@ export async function remoteBranches(options?: {
 }): Promise<string[]> {
   const nitDir = findNitDir(options?.projectDir);
   const remoteName = options?.remoteName || 'origin';
-  validateRemoteName(remoteName);
-  const apiBase = (await getRemoteUrl(nitDir, remoteName)) || DEFAULT_API_BASE;
+  const apiBase = await resolveRemoteUrl(nitDir, remoteName);
   return listRemoteBranches(nitDir, apiBase);
 }
 
@@ -1249,8 +1262,7 @@ export async function remoteCheck(options?: {
 }): Promise<RemoteCheckResult> {
   const nitDir = findNitDir(options?.projectDir);
   const remoteName = options?.remoteName || 'origin';
-  validateRemoteName(remoteName);
-  const apiBase = (await getRemoteUrl(nitDir, remoteName)) || DEFAULT_API_BASE;
+  const apiBase = await resolveRemoteUrl(nitDir, remoteName);
 
   const result: RemoteCheckResult = {
     name: remoteName,
@@ -1541,8 +1553,7 @@ export async function pull(options?: {
 }): Promise<PullResult[]> {
   const nitDir = findNitDir(options?.projectDir);
   const remoteName = options?.remoteName || 'origin';
-  validateRemoteName(remoteName);
-  const apiBase = (await getRemoteUrl(nitDir, remoteName)) || DEFAULT_API_BASE;
+  const apiBase = await resolveRemoteUrl(nitDir, remoteName);
   const currentBranch = await getCurrentBranch(nitDir);
   const agentId = await loadAgentId(nitDir);
 

@@ -128,10 +128,10 @@ Pure Node.js builtins. No bloat.
 | `nit diff [target]` | JSON diff vs HEAD, branch, or commit |
 | `nit branch [name]` | List branches or create a new one |
 | `nit branch -d <name>` | Delete a local branch |
-| `nit branch -D <name>` | Delete local + remote branch |
+| `nit branch -D <name> [--remote <remote>]` | Delete local + selected remote branch |
 | `nit checkout <branch>` | Switch branch (auto-commits changes first) |
-| `nit push [--all]` | Push branch(es) to remote |
-| `nit pull [--all]` | Pull branch(es) from remote |
+| `nit push [--all] [--remote <remote>]` | Push branch(es) to selected remote |
+| `nit pull [--all] [--remote <remote>]` | Pull branch(es) from selected remote |
 | `nit doctor [--remote] [--publish] [--strict]` | Check local setup, optional remote health, and publish auth |
 | `nit reset [target]` | Restore agent-card.json from HEAD or target |
 | `nit show [target]` | Show commit metadata and card content |
@@ -139,8 +139,8 @@ Pure Node.js builtins. No bloat.
 | `nit sign --login <domain>` | Auto-switch to domain branch + generate login payload |
 | `nit verify-login <payload.json> --card <card.json>` | Verify a login payload locally |
 | `nit remote` | Show remote URL and credential status |
-| `nit remote branches` | List branches on the configured remote |
-| `nit remote check` | Check remote health and signed branch listing |
+| `nit remote branches [remote]` | List branches on the selected remote |
+| `nit remote check [remote]` | Check selected remote health and signed branch listing |
 | `nit remote add <name> <url>` | Add a new remote |
 | `nit remote set-url <name> <url>` | Change a remote's URL |
 | `nit sign-tx --chain <c> <data>` | Sign transaction data (EVM: 32-byte hash, Solana: message bytes) |

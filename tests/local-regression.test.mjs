@@ -366,6 +366,97 @@ test('remote branch APIs work against a non-Newtype compatible remote', async ()
   }
 });
 
+test('named remotes are selected explicitly for push pull check and delete', async () => {
+  const cwd = workspace('nit-named-remotes-');
+  initWorkspace(cwd);
+  const api = await import(pathToFileURL(join(repoRoot, 'dist', 'index.js')).href);
+  const remoteCard = JSON.parse(readFileSync(join(cwd, 'agent-card.json'), 'utf8'));
+  remoteCard.description = 'backup remote version';
+  const oldFetch = globalThis.fetch;
+  const calls = [];
+
+  globalThis.fetch = async (url, init = {}) => {
+    const parsed = new URL(String(url));
+    assert.equal(parsed.origin, 'http://backup.test');
+    calls.push(`${init.method ?? 'GET'} ${parsed.pathname}`);
+
+    if (parsed.pathname === '/agent-card/branches/main' && init.method === 'PUT') {
+      return new Response(JSON.stringify({ success: true }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }
+
+    if (parsed.pathname === '/.well-known/agent-card.json') {
+      return new Response(JSON.stringify(remoteCard), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }
+
+    if (parsed.pathname === '/health') {
+      return new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }
+
+    if (parsed.pathname === '/agent-card/branches' && !init.method) {
+      return new Response(JSON.stringify({ branches: [{ name: 'main' }, { name: 'faam.io' }] }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }
+
+    if (parsed.pathname === '/agent-card/branches/faam.io' && init.method === 'DELETE') {
+      return new Response(JSON.stringify({ success: true }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }
+
+    throw new Error(`unexpected request ${init.method ?? 'GET'} ${parsed.pathname}`);
+  };
+
+  try {
+    await api.remoteSetUrl('origin', 'http://origin.test', { projectDir: cwd });
+    await api.remoteAdd('backup', 'http://backup.test', { projectDir: cwd });
+
+    await assert.rejects(
+      () => api.remoteBranches({ projectDir: cwd, remoteName: 'missing' }),
+      /Remote "missing" does not exist/,
+    );
+
+    const pushResult = await api.push({ projectDir: cwd, remoteName: 'backup' });
+    assert.equal(pushResult[0].success, true);
+
+    const pullResult = await api.pull({ projectDir: cwd, remoteName: 'backup' });
+    assert.equal(pullResult[0].error, undefined);
+    assert.equal(JSON.parse(readFileSync(join(cwd, 'agent-card.json'), 'utf8')).description, 'backup remote version');
+
+    assert.deepEqual(await api.remoteBranches({ projectDir: cwd, remoteName: 'backup' }), ['main', 'faam.io']);
+    const check = await api.remoteCheck({ projectDir: cwd, remoteName: 'backup' });
+    assert.equal(check.name, 'backup');
+    assert.equal(check.health.ok, true);
+    assert.equal(check.branches.ok, true);
+
+    await api.branch('faam.io', { projectDir: cwd });
+    await api.branchDelete('faam.io', { projectDir: cwd, remote: true, remoteName: 'backup' });
+    assert.equal((await api.branch(undefined, { projectDir: cwd })).some((b) => b.name === 'faam.io'), false);
+
+    assert.deepEqual(calls, [
+      'PUT /agent-card/branches/main',
+      'GET /.well-known/agent-card.json',
+      'GET /agent-card/branches',
+      'GET /health',
+      'GET /agent-card/branches',
+      'DELETE /agent-card/branches/faam.io',
+    ]);
+  } finally {
+    globalThis.fetch = oldFetch;
+  }
+});
+
 test('fetchBranchCard completes non-main challenge-response flow', async () => {
   const cwd = workspace('nit-fetch-challenge-');
   initWorkspace(cwd);

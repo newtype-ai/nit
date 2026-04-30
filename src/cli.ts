@@ -194,6 +194,29 @@ function parseSkillOptions(
   return { skillSource, skillUrl };
 }
 
+function parseRemoteFlag(
+  args: string[],
+  usage: string,
+): { remoteName?: string; rest: string[] } {
+  let remoteName: string | undefined;
+  const rest: string[] = [];
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === '--remote') {
+      if (!args[i + 1]) {
+        console.error(`Missing value for --remote. ${usage}`);
+        process.exit(1);
+      }
+      remoteName = args[++i];
+    } else {
+      rest.push(arg);
+    }
+  }
+
+  return { remoteName, rest };
+}
+
 async function cmdInit(args: string[]) {
   const skillOptions = parseSkillOptions(args, {
     source: '--skill-source',
@@ -323,12 +346,25 @@ async function cmdBranch(args: string[]) {
   if (args[0] === '-d' || args[0] === '-D') {
     const name = args[1];
     if (!name) {
-      console.error(`Usage: nit branch ${args[0]} <name>`);
+      console.error(`Usage: nit branch ${args[0]} <name> [--remote <name>]`);
       process.exit(1);
     }
     const deleteRemote = args[0] === '-D';
-    await branchDelete(name, { remote: deleteRemote });
-    console.log(`Deleted branch '${name}'${deleteRemote ? ' (local + remote)' : ''}`);
+    const { remoteName, rest } = parseRemoteFlag(
+      args.slice(2),
+      `Usage: nit branch ${args[0]} <name> [--remote <name>]`,
+    );
+    if (rest.length > 0) {
+      console.error(`Unknown argument: ${rest[0]}`);
+      console.error(`Usage: nit branch ${args[0]} <name> [--remote <name>]`);
+      process.exit(1);
+    }
+    if (!deleteRemote && remoteName) {
+      console.error('--remote is only valid with nit branch -D');
+      process.exit(1);
+    }
+    await branchDelete(name, { remote: deleteRemote, remoteName });
+    console.log(`Deleted branch '${name}'${deleteRemote ? ` (local + ${remoteName ?? 'origin'})` : ''}`);
     return;
   }
 
@@ -379,8 +415,18 @@ async function cmdCheckout(args: string[]) {
 }
 
 async function cmdPush(args: string[]) {
-  const all = args.includes('--all');
-  const results = await push({ all });
+  const { remoteName, rest } = parseRemoteFlag(args, 'Usage: nit push [--all] [--remote <name>]');
+  let all = false;
+  for (const arg of rest) {
+    if (arg === '--all') {
+      all = true;
+    } else {
+      console.error(`Unknown flag: ${arg}`);
+      console.error('Usage: nit push [--all] [--remote <name>]');
+      process.exit(1);
+    }
+  }
+  const results = await push({ all, remoteName });
   let failed = false;
 
   for (const r of results) {
@@ -425,7 +471,12 @@ async function cmdRemote(args: string[]) {
   }
 
   if (subcommand === 'branches') {
-    const branches = await remoteBranches();
+    const remoteName = args[1];
+    if (args.length > 2) {
+      console.error('Usage: nit remote branches [name]');
+      process.exit(1);
+    }
+    const branches = await remoteBranches({ remoteName });
     for (const branchName of branches) {
       console.log(branchName);
     }
@@ -433,7 +484,12 @@ async function cmdRemote(args: string[]) {
   }
 
   if (subcommand === 'check') {
-    const result = await remoteCheck();
+    const remoteName = args[1];
+    if (args.length > 2) {
+      console.error('Usage: nit remote check [name]');
+      process.exit(1);
+    }
+    const result = await remoteCheck({ remoteName });
     console.log(`${bold(result.name)}`);
     console.log(`  URL:        ${result.url}`);
 
@@ -460,9 +516,17 @@ async function cmdRemote(args: string[]) {
   }
 
   if (subcommand) {
-    console.error(`nit remote: unknown subcommand '${subcommand}'`);
-    console.error('Usage: nit remote [branches | check | set-url <name> <url> | add <name> <url>]');
-    process.exit(1);
+    if (args.length > 1) {
+      console.error(`nit remote: unknown subcommand '${subcommand}'`);
+      console.error('Usage: nit remote [name | branches [name] | check [name] | set-url <name> <url> | add <name> <url>]');
+      process.exit(1);
+    }
+    const info = await remote({ remoteName: subcommand });
+    console.log(`${bold(info.name)}`);
+    console.log(`  URL:        ${info.url}`);
+    console.log(`  Agent ID:   ${info.agentId}`);
+    console.log(`  Auth:       ${green('Ed25519 keypair')}`);
+    return;
   }
 
   // Default: show remote info
@@ -722,8 +786,18 @@ async function cmdShow(args: string[]) {
 }
 
 async function cmdPull(args: string[]) {
-  const all = args.includes('--all');
-  const results = await pull({ all });
+  const { remoteName, rest } = parseRemoteFlag(args, 'Usage: nit pull [--all] [--remote <name>]');
+  let all = false;
+  for (const arg of rest) {
+    if (arg === '--all') {
+      all = true;
+    } else {
+      console.error(`Unknown flag: ${arg}`);
+      console.error('Usage: nit pull [--all] [--remote <name>]');
+      process.exit(1);
+    }
+  }
+  const results = await pull({ all, remoteName });
 
   for (const r of results) {
     if (r.error) {
@@ -1046,10 +1120,13 @@ ${bold('Commands:')}
   diff [target]      Compare card vs HEAD, branch, or commit
   branch [name]      List branches or create a new one
   branch -d <name>   Delete a local branch
-  branch -D <name>   Delete local + remote branch
+  branch -D <name> [--remote <remote>]
+                     Delete local + selected remote branch
   checkout <branch>  Switch branch (overwrites agent-card.json)
-  push [--all]       Push branch(es) to remote
-  pull [--all]       Pull branch(es) from remote
+  push [--all] [--remote <remote>]
+                     Push branch(es) to selected remote
+  pull [--all] [--remote <remote>]
+                     Pull branch(es) from selected remote
   doctor [--remote] [--publish] [--strict]
                      Check local setup, optional remote health, and publish auth
   reset [target]     Restore agent-card.json from HEAD or target
@@ -1058,8 +1135,10 @@ ${bold('Commands:')}
   sign --login <dom> Switch to domain branch + generate login payload
   verify-login <p>   Verify a login payload locally
   remote             Show remote info
-  remote branches    List branches on the configured remote
-  remote check       Check remote health and signed branch listing
+  remote branches [remote]
+                     List branches on the selected remote
+  remote check [remote]
+                     Check selected remote health and signed branch listing
   remote add <n> <u> Add a new remote
   remote set-url <n> <u>  Change remote URL
   sign-tx --chain <c> <data>  Sign tx data (evm: hash, solana: message)
