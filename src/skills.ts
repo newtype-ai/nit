@@ -430,6 +430,7 @@ Most apps don't support nit-native login yet. For these, use the human's existin
 | \`nit remote branches [remote]\` | List pushed remote branches |
 | \`nit remote check [remote]\` | Check remote health and branch listing |
 | \`nit skill refresh [--source <source>] [--url <url>]\` | Refresh nit SKILL.md |
+| \`nit update [--check|--install]\` | Check or install a nit CLI update |
 | \`nit branch [name]\` | List or create branches |
 | \`nit branch -d <name>\` | Delete local branch |
 | \`nit branch -D <name>\` | Delete local + remote branch |

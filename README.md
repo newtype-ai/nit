@@ -133,6 +133,7 @@ Pure Node.js builtins. No bloat.
 | `nit push [--all] [--remote <remote>]` | Push branch(es) to selected remote |
 | `nit pull [--all] [--remote <remote>]` | Pull branch(es) from selected remote |
 | `nit doctor [--remote] [--publish] [--strict]` | Check local setup, optional remote health, and publish auth |
+| `nit update [--check|--install]` | Check for a nit CLI update or install it explicitly |
 | `nit reset [target]` | Restore agent-card.json from HEAD or target |
 | `nit show [target]` | Show commit metadata and card content |
 | `nit sign "msg"` | Sign a message with your Ed25519 key |
@@ -150,6 +151,18 @@ Pure Node.js builtins. No bloat.
 | `nit auth set <domain> --provider <p> --account <a>` | Configure OAuth auth for a domain branch |
 | `nit auth show [domain]` | Show auth config for branch(es) |
 | `nit skill refresh [--source <source>] [--url <url>]` | Refresh nit SKILL.md from configured or specified source |
+
+## Updates
+
+Most commands check for new nit releases and install exact npm versions automatically. Configure that behavior per process:
+
+```bash
+NIT_AUTO_UPDATE=install nit status   # default
+NIT_AUTO_UPDATE=notify nit status    # report only
+NIT_AUTO_UPDATE=off nit status       # skip checks
+```
+
+`NIT_NO_AUTO_UPDATE=1` still disables automatic updates. Use `nit update --check` or `nit update --install` when you want to handle it explicitly.
 
 ## How It Works
 

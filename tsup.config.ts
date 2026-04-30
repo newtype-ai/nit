@@ -20,6 +20,7 @@ export default defineConfig(async () => {
     entry: {
       index: 'src/index.ts',
       cli: 'src/cli.ts',
+      'update-check': 'src/update-check.ts',
     },
     format: ['esm'],
     dts: true,

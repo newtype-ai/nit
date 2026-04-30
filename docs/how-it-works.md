@@ -301,15 +301,19 @@ nit discovers SKILL.md files across agent frameworks automatically.
 
 ## 11. Auto-Update
 
-The CLI keeps itself current without user intervention during normal command use.
+The CLI can keep itself current without user intervention during normal command use.
 
-**Check:** Most CLI invocations query `https://registry.npmjs.org/@newtype-ai/nit/latest` (3s timeout, cached 24h at `~/.nit-update-cache.json`). Help/version commands skip the check, as do CI runs and sessions with `NIT_NO_AUTO_UPDATE=1`.
+**Check:** Most CLI invocations query `https://registry.npmjs.org/@newtype-ai/nit/latest` (3s timeout, cached 24h at `~/.nit-update-cache.json`). Help/version/update commands skip the implicit check, as do CI runs and sessions with `NIT_NO_AUTO_UPDATE=1`.
+
+**Policy:** `NIT_AUTO_UPDATE=install|notify|off` controls automatic behavior. The default is `install`, preserving the original auto-update path. `notify` prints the pinned install command without running it. `off` skips checks.
 
 **Update:** If newer version found:
 1. Print: `nit: updating 0.5.1 -> 0.5.2 - https://github.com/newtype-ai/nit/releases/tag/v0.5.2`
 2. Run: `npm install -g @newtype-ai/nit@${latest}` — version-pinned to the discovered version, not the mutable `@latest` tag (30s timeout)
 3. Re-exec: `execFileSync('nit', args)` (no shell) with inherited stdio — prevents shell metacharacter injection
 4. Exit with same code
+
+**Manual:** `nit update --check` bypasses the cache and reports the latest release. `nit update --install` installs the exact discovered version without re-executing the original command.
 
 **Install count:** Total npm downloads are fetched at build time and baked into the binary as `__NIT_INSTALL_COUNT__`. Shown during `nit init`: `welcome the ~3,411th nit!`
 

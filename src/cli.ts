@@ -42,7 +42,7 @@ import {
 } from './index.js';
 import type { AuthProvider, NitSkillSource } from './types.js';
 import { formatDiff } from './diff.js';
-import { autoUpdate, version as nitVersion } from './update-check.js';
+import { autoUpdate, checkForUpdate, installNitVersion, manualInstallCommand, version as nitVersion } from './update-check.js';
 import { loadMachineHash } from './fingerprint.js';
 
 // ANSI color helpers
@@ -54,7 +54,7 @@ const dim = (s: string) => `\x1b[2m${s}\x1b[0m`;
 
 async function main() {
   const [, , command, ...args] = process.argv;
-  const skipUpdateCommands = new Set(['help', 'doctor', 'verify-login', '--help', '-h', '--version', '-v', undefined]);
+  const skipUpdateCommands = new Set(['help', 'doctor', 'update', 'verify-login', '--help', '-h', '--version', '-v', undefined]);
   if (!skipUpdateCommands.has(command)) {
     // Auto-update before running mutating/network commands (CLI only, never library)
     await autoUpdate();
@@ -127,6 +127,9 @@ async function main() {
         break;
       case 'doctor':
         await cmdDoctor(args);
+        break;
+      case 'update':
+        await cmdUpdate(args);
         break;
       case 'help':
       case '--help':
@@ -913,6 +916,44 @@ async function cmdDoctor(args: string[]) {
   }
 }
 
+async function cmdUpdate(args: string[]) {
+  let install = false;
+
+  for (const arg of args) {
+    if (arg === '--check') {
+      continue;
+    }
+    if (arg === '--install') {
+      install = true;
+      continue;
+    }
+    console.error(`Unknown flag: ${arg}`);
+    console.error('Usage: nit update [--check|--install]');
+    process.exit(1);
+  }
+
+  const update = await checkForUpdate({ force: true });
+  if (!update) {
+    console.log(`nit ${nitVersion} is current`);
+    return;
+  }
+
+  console.log(`nit update available: ${update.current} -> ${update.latest}`);
+
+  if (!install) {
+    console.log(`Run: ${manualInstallCommand(update.latest)}`);
+    return;
+  }
+
+  try {
+    installNitVersion(update.latest);
+  } catch {
+    throw new Error(`update install failed. Run manually: ${manualInstallCommand(update.latest)}`);
+  }
+
+  console.log(`installed @newtype-ai/nit@${update.latest}`);
+}
+
 async function cmdAuth(args: string[]) {
   const subcommand = args[0];
 
@@ -1129,6 +1170,8 @@ ${bold('Commands:')}
                      Pull branch(es) from selected remote
   doctor [--remote] [--publish] [--strict]
                      Check local setup, optional remote health, and publish auth
+  update [--check|--install]
+                     Check for a nit CLI update or install it explicitly
   reset [target]     Restore agent-card.json from HEAD or target
   show [target]      Show commit metadata and card content
   sign "message"     Sign a message with your Ed25519 key

@@ -17,9 +17,41 @@ const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000; // 1 day
 const FETCH_TIMEOUT_MS = 3_000; // 3s — never slow down the CLI
 const REGISTRY_URL = 'https://registry.npmjs.org/@newtype-ai/nit/latest';
 
+export type UpdateMode = 'install' | 'notify' | 'off';
+
 interface Cache {
   lastChecked: number;
   latestVersion: string;
+}
+
+export interface UpdateInfo {
+  current: string;
+  latest: string;
+}
+
+export interface CheckForUpdateOptions {
+  force?: boolean;
+  fetchImpl?: typeof fetch;
+  cachePath?: string;
+  now?: () => number;
+}
+
+type EnvLike = Record<string, string | undefined>;
+type ExecFileLike = (file: string, args: string[], options: Record<string, unknown>) => unknown;
+type Writer = { write: (message: string) => unknown };
+
+export interface AutoUpdateOptions {
+  env?: EnvLike;
+  check?: () => Promise<UpdateInfo | null>;
+  execFile?: ExecFileLike;
+  stderr?: Writer;
+  argv?: string[];
+  reexec?: boolean;
+  exit?: (code?: number) => void;
+}
+
+export interface InstallUpdateOptions {
+  execFile?: ExecFileLike;
 }
 
 function getCurrentVersion(): string {
@@ -46,18 +78,65 @@ function isPlainSemver(version: string): boolean {
   return /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(version);
 }
 
-async function readCache(): Promise<Cache | null> {
+function parseUpdateMode(value: string): UpdateMode | null {
+  const normalized = value.trim().toLowerCase();
+  if (normalized === 'install' || normalized === 'notify' || normalized === 'off') {
+    return normalized;
+  }
+  if (normalized === '1' || normalized === 'true' || normalized === 'yes') return 'install';
+  if (normalized === '0' || normalized === 'false' || normalized === 'no') return 'off';
+  return null;
+}
+
+export function resolveAutoUpdateMode(env: EnvLike = process.env): { mode: UpdateMode; warning?: string } {
+  if (env.CI === 'true' || env.CI === '1') {
+    return { mode: 'off' };
+  }
+
+  if (env.NIT_NO_AUTO_UPDATE === '1') {
+    return { mode: 'off' };
+  }
+
+  const configured = env.NIT_AUTO_UPDATE;
+  if (!configured) {
+    return { mode: 'install' };
+  }
+
+  const mode = parseUpdateMode(configured);
+  if (!mode) {
+    return {
+      mode: 'off',
+      warning: `nit: invalid NIT_AUTO_UPDATE="${configured}". Use install, notify, or off.\n`,
+    };
+  }
+
+  return { mode };
+}
+
+export function manualInstallCommand(latest: string): string {
+  return `npm install -g @newtype-ai/nit@${latest}`;
+}
+
+async function readCache(path = CACHE_PATH): Promise<Cache | null> {
   try {
-    const raw = await readFile(CACHE_PATH, 'utf-8');
-    return JSON.parse(raw) as Cache;
+    const raw = await readFile(path, 'utf-8');
+    const parsed = JSON.parse(raw) as Partial<Cache>;
+    if (
+      typeof parsed.lastChecked === 'number' &&
+      typeof parsed.latestVersion === 'string' &&
+      isPlainSemver(parsed.latestVersion)
+    ) {
+      return { lastChecked: parsed.lastChecked, latestVersion: parsed.latestVersion };
+    }
+    return null;
   } catch {
     return null;
   }
 }
 
-async function writeCache(cache: Cache): Promise<void> {
+async function writeCache(cache: Cache, path = CACHE_PATH): Promise<void> {
   try {
-    await writeFile(CACHE_PATH, JSON.stringify(cache), 'utf-8');
+    await writeFile(path, JSON.stringify(cache), 'utf-8');
   } catch {
     // Ignore — cache is best-effort
   }
@@ -68,12 +147,14 @@ async function writeCache(cache: Cache): Promise<void> {
  * Returns the latest version string if outdated, null otherwise.
  * Never throws.
  */
-export async function checkForUpdate(): Promise<{ current: string; latest: string } | null> {
+export async function checkForUpdate(options: CheckForUpdateOptions = {}): Promise<UpdateInfo | null> {
   const current = getCurrentVersion();
+  const now = options.now ?? Date.now;
+  const cachePath = options.cachePath ?? CACHE_PATH;
 
   // Check cache first
-  const cache = await readCache();
-  if (cache && Date.now() - cache.lastChecked < CHECK_INTERVAL_MS) {
+  const cache = options.force ? null : await readCache(cachePath);
+  if (cache && now() - cache.lastChecked < CHECK_INTERVAL_MS) {
     return isNewer(cache.latestVersion, current)
       ? { current, latest: cache.latestVersion }
       : null;
@@ -84,7 +165,8 @@ export async function checkForUpdate(): Promise<{ current: string; latest: strin
   const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
   try {
-    const res = await fetch(REGISTRY_URL, {
+    const fetchImpl = options.fetchImpl ?? fetch;
+    const res = await fetchImpl(REGISTRY_URL, {
       signal: controller.signal,
       headers: { Accept: 'application/json' },
     });
@@ -94,9 +176,10 @@ export async function checkForUpdate(): Promise<{ current: string; latest: strin
     const data = (await res.json()) as { version?: string };
     const latest = data.version;
     if (!latest) return null;
+    if (!isPlainSemver(latest)) return null;
 
     // Cache the result
-    await writeCache({ lastChecked: Date.now(), latestVersion: latest });
+    await writeCache({ lastChecked: now(), latestVersion: latest }, cachePath);
 
     return isNewer(latest, current) ? { current, latest } : null;
   } catch {
@@ -104,6 +187,18 @@ export async function checkForUpdate(): Promise<{ current: string; latest: strin
   } finally {
     clearTimeout(timeout);
   }
+}
+
+export function installNitVersion(latest: string, options: InstallUpdateOptions = {}): void {
+  if (!isPlainSemver(latest)) {
+    throw new Error(`invalid npm version "${latest}"`);
+  }
+
+  const run = options.execFile ?? (execFileSync as ExecFileLike);
+  run('npm', ['install', '-g', `@newtype-ai/nit@${latest}`], {
+    stdio: ['ignore', 'ignore', 'pipe'],
+    timeout: 30_000,
+  });
 }
 
 /**
@@ -114,42 +209,56 @@ export async function checkForUpdate(): Promise<{ current: string; latest: strin
  * and exits. On failure, warns and returns (caller continues with
  * current version).
  */
-export async function autoUpdate(): Promise<void> {
-  if (process.env.NIT_NO_AUTO_UPDATE === '1' || process.env.CI === 'true' || process.env.CI === '1') {
+export async function autoUpdate(options: AutoUpdateOptions = {}): Promise<void> {
+  const env = options.env ?? process.env;
+  const stderr = options.stderr ?? process.stderr;
+  const policy = resolveAutoUpdateMode(env);
+
+  if (policy.warning) {
+    stderr.write(policy.warning);
+  }
+
+  if (policy.mode === 'off') {
     return;
   }
 
-  const update = await checkForUpdate().catch(() => null);
+  const update = await (options.check ? options.check() : checkForUpdate()).catch(() => null);
   if (!update) return;
 
   const { current, latest } = update;
   if (!isPlainSemver(latest)) {
-    process.stderr.write(`nit: skipped auto-update for invalid npm version "${latest}"\n`);
+    stderr.write(`nit: skipped auto-update for invalid npm version "${latest}"\n`);
     return;
   }
 
-  process.stderr.write(`nit: updating ${current} -> ${latest} - https://github.com/newtype-ai/nit/releases/tag/v${latest}\n`);
+  if (policy.mode === 'notify') {
+    stderr.write(`nit: update available ${current} -> ${latest}. Run: ${manualInstallCommand(latest)}\n`);
+    return;
+  }
+
+  stderr.write(`nit: updating ${current} -> ${latest} - https://github.com/newtype-ai/nit/releases/tag/v${latest}\n`);
 
   try {
-    // TODO: Verify npm provenance/signatures before installing
-    // See: https://docs.npmjs.com/generating-provenance-statements
-    execFileSync('npm', ['install', '-g', `@newtype-ai/nit@${latest}`], {
-      stdio: ['ignore', 'ignore', 'pipe'],
-      timeout: 30_000,
-    });
+    installNitVersion(latest, { execFile: options.execFile });
   } catch {
-    process.stderr.write(`nit: auto-update failed. Run manually: npm install -g @newtype-ai/nit\n`);
+    stderr.write(`nit: auto-update failed. Run manually: ${manualInstallCommand(latest)}\n`);
+    return;
+  }
+
+  if (options.reexec === false) {
     return;
   }
 
   // Re-exec with explicit args (no shell interpolation)
+  const run = options.execFile ?? (execFileSync as ExecFileLike);
+  const argv = options.argv ?? process.argv.slice(2);
+  const exit = options.exit ?? ((code?: number) => { process.exit(code); });
   try {
-    const args = process.argv.slice(2);
-    execFileSync('nit', args, { stdio: 'inherit', timeout: 60_000 });
-    process.exit(0);
+    run('nit', argv, { stdio: 'inherit', timeout: 60_000 });
+    exit(0);
   } catch (err) {
     // Forward the exit code from the re-exec'd process
     const code = (err as { status?: number }).status ?? 1;
-    process.exit(code);
+    exit(code);
   }
 }

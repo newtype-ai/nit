@@ -30,6 +30,122 @@ function initWorkspace(cwd) {
   assert.equal(result.status, 0, result.stderr || result.stdout);
 }
 
+async function updateApi() {
+  return import(pathToFileURL(join(repoRoot, 'dist', 'update-check.js')).href);
+}
+
+test('auto update policy supports off notify and install modes', async () => {
+  const api = await updateApi();
+
+  let checked = false;
+  await api.autoUpdate({
+    env: { NIT_AUTO_UPDATE: 'off' },
+    check: async () => {
+      checked = true;
+      return { current: '0.6.15', latest: '9.9.9' };
+    },
+  });
+  assert.equal(checked, false);
+
+  const calls = [];
+  let notifyStderr = '';
+  await api.autoUpdate({
+    env: { NIT_AUTO_UPDATE: 'notify' },
+    check: async () => ({ current: '0.6.15', latest: '9.9.9' }),
+    execFile: (file, args, options) => {
+      calls.push({ file, args, options });
+    },
+    stderr: { write: (message) => { notifyStderr += message; } },
+  });
+  assert.equal(calls.length, 0);
+  assert.match(notifyStderr, /update available 0\.6\.15 -> 9\.9\.9/);
+  assert.match(notifyStderr, /npm install -g @newtype-ai\/nit@9\.9\.9/);
+
+  let installStderr = '';
+  await api.autoUpdate({
+    env: { NIT_AUTO_UPDATE: 'install' },
+    check: async () => ({ current: '0.6.15', latest: '9.9.9' }),
+    execFile: (file, args, options) => {
+      calls.push({ file, args, options });
+    },
+    stderr: { write: (message) => { installStderr += message; } },
+    reexec: false,
+  });
+  assert.deepEqual(calls.map((call) => [call.file, call.args]), [
+    ['npm', ['install', '-g', '@newtype-ai/nit@9.9.9']],
+  ]);
+  assert.match(installStderr, /updating 0\.6\.15 -> 9\.9\.9/);
+});
+
+test('auto update keeps legacy opt out and rejects invalid policy', async () => {
+  const api = await updateApi();
+
+  assert.equal(api.resolveAutoUpdateMode({ NIT_NO_AUTO_UPDATE: '1' }).mode, 'off');
+
+  let stderr = '';
+  let checked = false;
+  await api.autoUpdate({
+    env: { NIT_AUTO_UPDATE: 'sometimes' },
+    check: async () => {
+      checked = true;
+      return { current: '0.6.15', latest: '9.9.9' };
+    },
+    stderr: { write: (message) => { stderr += message; } },
+  });
+  assert.equal(checked, false);
+  assert.match(stderr, /invalid NIT_AUTO_UPDATE/);
+});
+
+test('update check caches only valid semver versions', async () => {
+  const api = await updateApi();
+  const cwd = workspace('nit-update-cache-');
+  const cachePath = join(cwd, 'cache.json');
+  let fetchCount = 0;
+
+  const first = await api.checkForUpdate({
+    cachePath,
+    now: () => 1_000,
+    fetchImpl: async () => {
+      fetchCount++;
+      return new Response(JSON.stringify({ version: '9.9.9' }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    },
+  });
+
+  assert.equal(fetchCount, 1);
+  assert.equal(first?.latest, '9.9.9');
+
+  const cached = await api.checkForUpdate({
+    cachePath,
+    now: () => 2_000,
+    fetchImpl: async () => {
+      fetchCount++;
+      return new Response(JSON.stringify({ version: '9.9.10' }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    },
+  });
+
+  assert.equal(fetchCount, 1);
+  assert.equal(cached?.latest, '9.9.9');
+
+  const invalid = await api.checkForUpdate({
+    force: true,
+    cachePath,
+    now: () => 3_000,
+    fetchImpl: async () => new Response(JSON.stringify({ version: 'bad latest' }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    }),
+  });
+
+  assert.equal(invalid, null);
+  assert.match(readFileSync(cachePath, 'utf8'), /9\.9\.9/);
+});
+
 test('branch delete rejects traversal and preserves config', () => {
   const cwd = workspace('nit-branch-');
   initWorkspace(cwd);
