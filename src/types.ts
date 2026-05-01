@@ -277,6 +277,47 @@ export interface ServerAttestation {
 // Runtime shape validation
 // ---------------------------------------------------------------------------
 
+const MAX_STRING_FIELD_LENGTH = 8192;
+const MAX_SKILLS = 500;
+const MAX_ARRAY_ITEMS = 500;
+
+function assertStringValue(value: unknown, label: string, options?: { required?: boolean }): string | undefined {
+  if (value === undefined) {
+    if (options?.required) {
+      throw new Error(`Invalid agent-card.json: ${label} is required`);
+    }
+    return undefined;
+  }
+  if (typeof value !== 'string') {
+    throw new Error(`Invalid agent-card.json: ${label} must be a string`);
+  }
+  if (value.length > MAX_STRING_FIELD_LENGTH) {
+    throw new Error(`Invalid agent-card.json: ${label} is too long`);
+  }
+  if (/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(value)) {
+    throw new Error(`Invalid agent-card.json: ${label} must not contain control characters`);
+  }
+  return value;
+}
+
+function assertStringArray(value: unknown, label: string): void {
+  if (!Array.isArray(value)) {
+    throw new Error(`Invalid agent-card.json: ${label} must be an array`);
+  }
+  if (value.length > MAX_ARRAY_ITEMS) {
+    throw new Error(`Invalid agent-card.json: ${label} has too many items`);
+  }
+  for (const [index, item] of value.entries()) {
+    assertStringValue(item, `${label}[${index}]`, { required: true });
+  }
+}
+
+function assertOptionalStringArray(obj: Record<string, unknown>, key: string, label: string): void {
+  if (key in obj) {
+    assertStringArray(obj[key], label);
+  }
+}
+
 /**
  * Lightweight runtime shape check for parsed agent-card.json.
  *
@@ -289,24 +330,72 @@ export function assertAgentCardShape(obj: unknown): asserts obj is AgentCard {
     throw new Error('Invalid agent-card.json: root must be a JSON object');
   }
   const o = obj as Record<string, unknown>;
-  if ('name' in o && typeof o.name !== 'string')
-    throw new Error('Invalid agent-card.json: name must be a string');
-  if ('description' in o && typeof o.description !== 'string')
-    throw new Error('Invalid agent-card.json: description must be a string');
-  if ('skills' in o && !Array.isArray(o.skills))
-    throw new Error('Invalid agent-card.json: skills must be an array');
-  if ('url' in o && typeof o.url !== 'string')
-    throw new Error('Invalid agent-card.json: url must be a string');
+  assertStringValue(o.name, 'name');
+  assertStringValue(o.description, 'description');
+  assertStringValue(o.protocolVersion, 'protocolVersion');
+  assertStringValue(o.version, 'version');
+  assertStringValue(o.url, 'url');
+  assertStringValue(o.publicKey, 'publicKey');
+  assertStringValue(o.iconUrl, 'iconUrl');
+  assertStringValue(o.documentationUrl, 'documentationUrl');
+
+  if ('defaultInputModes' in o) {
+    assertStringArray(o.defaultInputModes, 'defaultInputModes');
+  }
+  if ('defaultOutputModes' in o) {
+    assertStringArray(o.defaultOutputModes, 'defaultOutputModes');
+  }
+
+  if ('skills' in o) {
+    if (!Array.isArray(o.skills)) {
+      throw new Error('Invalid agent-card.json: skills must be an array');
+    }
+    if (o.skills.length > MAX_SKILLS) {
+      throw new Error('Invalid agent-card.json: skills has too many items');
+    }
+    for (const [index, skill] of o.skills.entries()) {
+      if (skill === null || typeof skill !== 'object' || Array.isArray(skill)) {
+        throw new Error(`Invalid agent-card.json: skills[${index}] must be a JSON object`);
+      }
+      const s = skill as Record<string, unknown>;
+      const id = assertStringValue(s.id, `skills[${index}].id`, { required: true });
+      if (!id?.trim()) {
+        throw new Error(`Invalid agent-card.json: skills[${index}].id cannot be empty`);
+      }
+      assertStringValue(s.name, `skills[${index}].name`);
+      assertStringValue(s.description, `skills[${index}].description`);
+      assertOptionalStringArray(s, 'tags', `skills[${index}].tags`);
+      assertOptionalStringArray(s, 'examples', `skills[${index}].examples`);
+      assertOptionalStringArray(s, 'inputModes', `skills[${index}].inputModes`);
+      assertOptionalStringArray(s, 'outputModes', `skills[${index}].outputModes`);
+    }
+  }
+
+  if ('provider' in o) {
+    if (o.provider === null || typeof o.provider !== 'object' || Array.isArray(o.provider)) {
+      throw new Error('Invalid agent-card.json: provider must be a JSON object');
+    }
+    const p = o.provider as Record<string, unknown>;
+    assertStringValue(p.organization, 'provider.organization');
+    assertStringValue(p.url, 'provider.url');
+  }
+
+  if ('wallet' in o) {
+    if (o.wallet === null || typeof o.wallet !== 'object' || Array.isArray(o.wallet)) {
+      throw new Error('Invalid agent-card.json: wallet must be a JSON object');
+    }
+    const w = o.wallet as Record<string, unknown>;
+    assertStringValue(w.solana, 'wallet.solana');
+    assertStringValue(w.evm, 'wallet.evm');
+  }
+
   if ('runtime' in o) {
     if (o.runtime === null || typeof o.runtime !== 'object' || Array.isArray(o.runtime))
       throw new Error('Invalid agent-card.json: runtime must be a JSON object');
     const r = o.runtime as Record<string, unknown>;
-    if ('provider' in r && typeof r.provider !== 'string')
-      throw new Error('Invalid agent-card.json: runtime.provider must be a string');
-    if ('model' in r && typeof r.model !== 'string')
-      throw new Error('Invalid agent-card.json: runtime.model must be a string');
-    if ('harness' in r && typeof r.harness !== 'string')
-      throw new Error('Invalid agent-card.json: runtime.harness must be a string');
+    assertStringValue(r.provider, 'runtime.provider');
+    assertStringValue(r.model, 'runtime.model');
+    assertStringValue(r.harness, 'runtime.harness');
     if ('declared_at' in r && (typeof r.declared_at !== 'number' || !Number.isFinite(r.declared_at)))
       throw new Error('Invalid agent-card.json: runtime.declared_at must be a finite number');
   }

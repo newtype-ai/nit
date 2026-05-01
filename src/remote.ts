@@ -29,6 +29,7 @@ const hostnameHash = createHash('sha256').update(hostname()).digest('hex');
 const FETCH_TIMEOUT_MS = 10_000;
 const MAX_RESPONSE_BYTES = 256 * 1024;
 const MAX_ERROR_BYTES = 16 * 1024;
+const MAX_CHALLENGE_BYTES = 4096;
 
 async function fetchWithTimeout(
   url: string,
@@ -133,8 +134,14 @@ function parseChallenge(data: unknown): { challenge: string; expires: number } {
   if (typeof challenge !== 'string' || challenge.length === 0) {
     throw new Error('Challenge response is missing challenge');
   }
-  if (typeof expires !== 'number' || !Number.isFinite(expires)) {
+  if (new TextEncoder().encode(challenge).byteLength > MAX_CHALLENGE_BYTES) {
+    throw new Error(`Challenge exceeds ${MAX_CHALLENGE_BYTES} bytes`);
+  }
+  if (typeof expires !== 'number' || !Number.isFinite(expires) || !Number.isInteger(expires)) {
     throw new Error('Challenge response is missing expires');
+  }
+  if (expires <= Math.floor(Date.now() / 1000)) {
+    throw new Error('Challenge has expired');
   }
   return { challenge, expires };
 }

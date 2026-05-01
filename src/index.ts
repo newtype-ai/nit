@@ -209,9 +209,12 @@ function validateAndFillCard(card: AgentCard): void {
   if (!card.name?.trim()) {
     throw new Error('agent-card.json is missing "name". Set a name for your agent.');
   }
+  validateConfigValue(card.name, 'agent-card.json name');
   if (!card.description?.trim()) {
     throw new Error('agent-card.json is missing "description". Describe what your agent does.');
   }
+
+  assertAgentCardShape(card);
 }
 
 // ---------------------------------------------------------------------------
@@ -246,16 +249,26 @@ function projectDir(nitDir: string): string {
  */
 async function readWorkingCard(nitDir: string): Promise<AgentCard> {
   const cardPath = join(projectDir(nitDir), CARD_FILE);
+  let raw: string;
   try {
-    const raw = await fs.readFile(cardPath, 'utf-8');
-    const parsed: unknown = JSON.parse(raw);
-    assertAgentCardShape(parsed);
-    return parsed;
+    raw = await fs.readFile(cardPath, 'utf-8');
   } catch (err) {
-    if (err instanceof Error && err.message.startsWith('Invalid agent-card.json:'))
-      throw err;
-    throw new Error(`Cannot read ${CARD_FILE}. Does it exist?`);
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === 'ENOENT') {
+      throw new Error(`Cannot read ${CARD_FILE}. Does it exist?`);
+    }
+    throw err;
   }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new Error(`Invalid ${CARD_FILE}: ${msg}`);
+  }
+  assertAgentCardShape(parsed);
+  return parsed;
 }
 
 /**
@@ -300,6 +313,47 @@ async function getAuthorName(nitDir: string): Promise<string> {
   } catch {
     return basename(projectDir(nitDir));
   }
+}
+
+async function normalizeCardForLocalIdentity(
+  nitDir: string,
+  card: AgentCard,
+  label = 'agent card',
+): Promise<AgentCard> {
+  const pubBase64 = await loadPublicKey(nitDir);
+  const publicKey = formatPublicKeyField(pubBase64);
+  const walletAddrs = await getWalletAddresses(nitDir);
+  const expectedWallet = { solana: walletAddrs.solana, evm: walletAddrs.ethereum };
+  const agentId = await loadAgentId(nitDir);
+
+  if (card.publicKey && card.publicKey !== publicKey) {
+    throw new Error(`${label} publicKey does not match local identity`);
+  }
+  if (card.wallet) {
+    if (card.wallet.solana && card.wallet.solana !== expectedWallet.solana) {
+      throw new Error(`${label} Solana wallet does not match local identity`);
+    }
+    if (card.wallet.evm && card.wallet.evm !== expectedWallet.evm) {
+      throw new Error(`${label} EVM wallet does not match local identity`);
+    }
+  }
+
+  const normalized: AgentCard = {
+    ...card,
+    publicKey,
+    wallet: expectedWallet,
+    url: defaultCardUrl(agentId),
+  };
+
+  const runtime = await configGetRuntime(nitDir);
+  if (runtime) {
+    normalized.runtime = runtime;
+  } else {
+    delete normalized.runtime;
+  }
+
+  validateAndFillCard(normalized);
+  return normalized;
 }
 
 // ---------------------------------------------------------------------------
@@ -880,29 +934,7 @@ export async function commit(
   // Read and resolve skills
   let card = await readWorkingCard(nitDir);
   card = await resolveSkillPointers(card, projDir);
-
-  // Enforce real publicKey from identity (agent cannot tamper with this field)
-  const pubBase64 = await loadPublicKey(nitDir);
-  card.publicKey = formatPublicKeyField(pubBase64);
-
-  // Enforce wallet addresses from identity
-  const walletAddrs = await getWalletAddresses(nitDir);
-  card.wallet = { solana: walletAddrs.solana, evm: walletAddrs.ethereum };
-
-  // Enforce card URL from agent ID
-  const agentId = await loadAgentId(nitDir);
-  card.url = defaultCardUrl(agentId);
-
-  // Inject self-declared runtime if configured
-  const runtime = await configGetRuntime(nitDir);
-  if (runtime) {
-    card.runtime = runtime;
-  } else {
-    delete card.runtime;
-  }
-
-  // Validate required fields + auto-fill protocol version and defaults
-  validateAndFillCard(card);
+  card = await normalizeCardForLocalIdentity(nitDir, card, CARD_FILE);
 
   // Write the resolved card back (skills + publicKey + wallet may have updated)
   await writeWorkingCard(nitDir, card);
@@ -924,11 +956,12 @@ export async function commit(
 
   // Create commit
   const author = await getAuthorName(nitDir);
+  const timestamp = Math.floor(Date.now() / 1000);
   const commitContent = serializeCommit({
     card: cardHash,
     parent: parentHash,
     author,
-    timestamp: Math.floor(Date.now() / 1000),
+    timestamp,
     message,
   });
   const commitHash = await writeObject(nitDir, 'commit', commitContent);
@@ -942,7 +975,7 @@ export async function commit(
     card: cardHash,
     parent: parentHash,
     author,
-    timestamp: Math.floor(Date.now() / 1000),
+    timestamp,
     message,
   };
 }
@@ -1106,26 +1139,19 @@ export async function checkout(
   let autoCommitted = false;
 
   // Auto-commit uncommitted changes (nit manages its own state)
-  try {
-    const headHash = await resolveHead(nitDir);
-    const headCard = await getCardAtCommit(nitDir, headHash);
-    const workingCard = await readWorkingCard(nitDir);
-    const d = diffCards(headCard, workingCard);
-    if (d.changed) {
-      try {
-        await commit(`auto-save before switching to ${branchName}`, options);
-        autoCommitted = true;
-      } catch (commitErr) {
-        if (!(commitErr instanceof Error && commitErr.message.includes('Nothing to commit'))) {
-          throw commitErr;
-        }
+  const headHash = await resolveHead(nitDir);
+  const headCard = await getCardAtCommit(nitDir, headHash);
+  const workingCard = await readWorkingCard(nitDir);
+  const d = diffCards(headCard, workingCard);
+  if (d.changed) {
+    try {
+      await commit(`auto-save before switching to ${branchName}`, options);
+      autoCommitted = true;
+    } catch (commitErr) {
+      if (!(commitErr instanceof Error && commitErr.message.includes('Nothing to commit'))) {
+        throw commitErr;
       }
     }
-  } catch (err) {
-    if (err instanceof Error && err.message.includes('auto-save')) {
-      throw err; // Real commit error — re-throw
-    }
-    // Other errors (empty repo, etc.) — proceed
   }
 
   // Resolve target branch
@@ -1568,7 +1594,12 @@ export async function pull(options?: {
       // Fetch card from remote — fetchBranchCard(cardUrl, branch, nitDir?)
       const { fetchBranchCard } = await import('./remote.js');
       const cardUrl = cardReadBaseUrl(apiBase, agentId);
-      const remoteCard = await fetchBranchCard(cardUrl, b.name, nitDir);
+      const fetchedCard = await fetchBranchCard(cardUrl, b.name, nitDir);
+      const remoteCard = await normalizeCardForLocalIdentity(
+        nitDir,
+        fetchedCard,
+        `Remote branch "${b.name}"`,
+      );
 
       // Write card to object store
       const cardJson = JSON.stringify(remoteCard, null, 2);
@@ -1587,11 +1618,12 @@ export async function pull(options?: {
 
       // Create commit
       const author = remoteCard.name || b.name;
+      const timestamp = Math.floor(Date.now() / 1000);
       const commitContent = serializeCommit({
         card: cardHash,
         parent: localHash,
         author,
-        timestamp: Math.floor(Date.now() / 1000),
+        timestamp,
         message: `Pull from ${remoteName}`,
       });
       const commitHash = await writeObject(nitDir, 'commit', commitContent);

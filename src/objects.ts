@@ -9,6 +9,21 @@ import { join } from 'node:path';
 import type { NitCommit } from './types.js';
 import { validateObjectHash } from './validation.js';
 
+function assertHeaderValue(value: string, label: string): void {
+  if (value.length === 0) {
+    throw new Error(`${label} cannot be empty`);
+  }
+  if (/[\x00-\x1f\x7f]/.test(value)) {
+    throw new Error(`${label} must not contain control characters`);
+  }
+}
+
+function assertCommitMessage(message: string): void {
+  if (message.includes('\0')) {
+    throw new Error('Commit message must not contain NUL bytes');
+  }
+}
+
 /**
  * Compute a SHA-256 hash for an object without writing it to disk.
  *
@@ -39,8 +54,10 @@ export async function writeObject(
 
   // Skip if already stored (content-addressable → idempotent)
   try {
-    await fs.access(file);
-    return hex;
+    const existing = await fs.readFile(file, 'utf-8');
+    if (hashObject(type, existing) === hex) {
+      return hex;
+    }
   } catch {
     // Does not exist yet — write it
   }
@@ -56,11 +73,16 @@ export async function writeObject(
 export async function readObject(nitDir: string, hash: string): Promise<string> {
   validateObjectHash(hash);
   const file = join(nitDir, 'objects', hash.slice(0, 2), hash.slice(2));
+  let raw: string;
   try {
-    return await fs.readFile(file, 'utf-8');
+    raw = await fs.readFile(file, 'utf-8');
   } catch {
     throw new Error(`Object not found: ${hash}`);
   }
+  if (hashObject('card', raw) !== hash && hashObject('commit', raw) !== hash) {
+    throw new Error(`Object hash mismatch: ${hash}`);
+  }
+  return raw;
 }
 
 /**
@@ -90,6 +112,16 @@ export async function objectExists(nitDir: string, hash: string): Promise<boolea
 export function serializeCommit(
   commit: Omit<NitCommit, 'type' | 'hash'>,
 ): string {
+  validateObjectHash(commit.card, 'Commit card hash');
+  if (commit.parent !== null) {
+    validateObjectHash(commit.parent, 'Commit parent hash');
+  }
+  assertHeaderValue(commit.author, 'Commit author');
+  if (!Number.isSafeInteger(commit.timestamp) || commit.timestamp < 0) {
+    throw new Error('Commit timestamp must be a non-negative safe integer');
+  }
+  assertCommitMessage(commit.message);
+
   const lines: string[] = [];
   lines.push(`card ${commit.card}`);
   if (commit.parent !== null) {
@@ -129,8 +161,17 @@ export function parseCommit(hash: string, raw: string): NitCommit {
     } else if (line.startsWith('author ')) {
       const authorPart = line.slice(7);
       const lastSpace = authorPart.lastIndexOf(' ');
+      if (lastSpace <= 0) {
+        throw new Error(`Malformed commit object ${hash}: invalid author line`);
+      }
       author = authorPart.slice(0, lastSpace);
-      timestamp = parseInt(authorPart.slice(lastSpace + 1), 10);
+      const timestampRaw = authorPart.slice(lastSpace + 1);
+      if (!/^\d+$/.test(timestampRaw)) {
+        throw new Error(`Malformed commit object ${hash}: invalid timestamp`);
+      }
+      timestamp = Number(timestampRaw);
+    } else {
+      throw new Error(`Malformed commit object ${hash}: unknown header "${line}"`);
     }
   }
 
@@ -141,9 +182,17 @@ export function parseCommit(hash: string, raw: string): NitCommit {
   if (parent !== null) {
     validateObjectHash(parent, `Malformed commit object ${hash}: parent hash`);
   }
+  if (!author) {
+    throw new Error(`Malformed commit object ${hash}: missing author`);
+  }
+  assertHeaderValue(author, `Malformed commit object ${hash}: author`);
+  if (!Number.isSafeInteger(timestamp) || timestamp < 0) {
+    throw new Error(`Malformed commit object ${hash}: invalid timestamp`);
+  }
 
   const message =
     messageStart >= 0 ? lines.slice(messageStart).join('\n') : '';
+  assertCommitMessage(message);
 
   return {
     type: 'commit',

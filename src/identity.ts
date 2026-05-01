@@ -36,6 +36,19 @@ function base64ToBase64url(b64: string): string {
   return b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
+const BASE64_RE = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
+
+function decodeRawKey(value: string, label: string): Buffer {
+  if (!BASE64_RE.test(value)) {
+    throw new Error(`${label} must be standard base64`);
+  }
+  const decoded = Buffer.from(value, 'base64');
+  if (decoded.length !== 32 || decoded.toString('base64') !== value) {
+    throw new Error(`${label} must be a 32-byte standard base64 key`);
+  }
+  return decoded;
+}
+
 // ---------------------------------------------------------------------------
 // Key generation
 // ---------------------------------------------------------------------------
@@ -82,13 +95,16 @@ export async function generateKeypair(
  */
 export async function loadPublicKey(nitDir: string): Promise<string> {
   const pubPath = join(nitDir, 'identity', 'agent.pub');
+  let pubBase64: string;
   try {
-    return (await fs.readFile(pubPath, 'utf-8')).trim();
+    pubBase64 = (await fs.readFile(pubPath, 'utf-8')).trim();
   } catch {
     throw new Error(
       'No identity found. Run `nit init` to generate a keypair.',
     );
   }
+  decodeRawKey(pubBase64, 'Public key');
+  return pubBase64;
 }
 
 /**
@@ -109,6 +125,8 @@ export async function loadPrivateKey(nitDir: string): Promise<KeyObject> {
   }
 
   // Reconstruct the private KeyObject via JWK
+  decodeRawKey(pubBase64, 'Public key');
+  decodeRawKey(privBase64, 'Private key');
   const xB64url = base64ToBase64url(pubBase64);
   const dB64url = base64ToBase64url(privBase64);
 
@@ -125,8 +143,20 @@ export async function loadPrivateKey(nitDir: string): Promise<KeyObject> {
  */
 export async function loadRawKeyPair(nitDir: string): Promise<Uint8Array> {
   const pubBase64 = await loadPublicKey(nitDir);
-  const keyPath = join(nitDir, 'identity', 'agent.key');
+  const seed = await loadPrivateSeed(nitDir);
+  const pubkey = decodeRawKey(pubBase64, 'Public key');
 
+  const keypair = new Uint8Array(64);
+  keypair.set(seed, 0);
+  keypair.set(pubkey, 32);
+  return keypair;
+}
+
+/**
+ * Read the private Ed25519 seed as raw bytes.
+ */
+export async function loadPrivateSeed(nitDir: string): Promise<Buffer> {
+  const keyPath = join(nitDir, 'identity', 'agent.key');
   let privBase64: string;
   try {
     privBase64 = (await fs.readFile(keyPath, 'utf-8')).trim();
@@ -135,14 +165,7 @@ export async function loadRawKeyPair(nitDir: string): Promise<Uint8Array> {
       'Private key not found at .nit/identity/agent.key. Regenerate with `nit init`.',
     );
   }
-
-  const seed = Buffer.from(privBase64, 'base64');
-  const pubkey = Buffer.from(pubBase64, 'base64');
-
-  const keypair = new Uint8Array(64);
-  keypair.set(seed, 0);
-  keypair.set(pubkey, 32);
-  return keypair;
+  return decodeRawKey(privBase64, 'Private key');
 }
 
 // ---------------------------------------------------------------------------

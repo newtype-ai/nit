@@ -254,6 +254,64 @@ test('init fails before creating .nit when existing card lacks required fields',
   assert.equal(existsSync(join(cwd, '.nit')), false);
 });
 
+test('init rejects malformed skill entries before creating .nit', () => {
+  const cwd = workspace('nit-init-skill-shape-');
+  const cardPath = join(cwd, 'agent-card.json');
+  writeFileSync(cardPath, JSON.stringify({
+    name: 'agent',
+    description: 'bad skills',
+    skills: [123],
+  }), 'utf8');
+
+  const result = runNit(cwd, ['init']);
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /skills\[0\] must be a JSON object/);
+  assert.equal(existsSync(join(cwd, '.nit')), false);
+});
+
+test('checkout fails closed when working card is malformed', () => {
+  const cwd = workspace('nit-checkout-malformed-');
+  initWorkspace(cwd);
+  assert.equal(runNit(cwd, ['branch', 'feature']).status, 0);
+
+  const cardPath = join(cwd, 'agent-card.json');
+  writeFileSync(cardPath, '{bad json', 'utf8');
+
+  const result = runNit(cwd, ['checkout', 'feature']);
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /Invalid agent-card\.json/);
+  assert.equal(readFileSync(cardPath, 'utf8'), '{bad json');
+  assert.match(readFileSync(join(cwd, '.nit', 'HEAD'), 'utf8'), /refs\/heads\/main/);
+});
+
+test('commit rejects control characters in identity metadata', () => {
+  const cwd = workspace('nit-commit-control-');
+  initWorkspace(cwd);
+
+  const cardPath = join(cwd, 'agent-card.json');
+  const card = JSON.parse(readFileSync(cardPath, 'utf8'));
+  card.name = 'bad\nname';
+  card.description = 'changed';
+  writeFileSync(cardPath, JSON.stringify(card, null, 2), 'utf8');
+
+  const result = runNit(cwd, ['commit', '-m', 'bad metadata']);
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /control characters/);
+});
+
+test('corrupt objects are rejected instead of trusted by path', () => {
+  const cwd = workspace('nit-corrupt-object-');
+  initWorkspace(cwd);
+
+  const commitHash = readFileSync(join(cwd, '.nit', 'refs', 'heads', 'main'), 'utf8').trim();
+  const objectPath = join(cwd, '.nit', 'objects', commitHash.slice(0, 2), commitHash.slice(2));
+  writeFileSync(objectPath, 'corrupted object', 'utf8');
+
+  const result = runNit(cwd, ['log']);
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /Object hash mismatch/);
+});
+
 test('init uses Newtype as the default nit skill source', async () => {
   const cwd = workspace('nit-skill-default-');
   const api = await import(pathToFileURL(join(repoRoot, 'dist', 'index.js')).href);
@@ -426,6 +484,69 @@ test('pull reads custom remotes from /.well-known/agent-card.json', async () => 
     assert.equal(pullResult[0].error, undefined);
     assert.deepEqual(seenPaths, ['/.well-known/agent-card.json']);
     assert.equal(JSON.parse(readFileSync(cardPath, 'utf8')).description, 'remote card version');
+  } finally {
+    globalThis.fetch = oldFetch;
+  }
+});
+
+test('pull rejects remote cards with mismatched identity fields', async () => {
+  const cwd = workspace('nit-pull-identity-mismatch-');
+  initWorkspace(cwd);
+  const api = await import(pathToFileURL(join(repoRoot, 'dist', 'index.js')).href);
+
+  const cardPath = join(cwd, 'agent-card.json');
+  const before = JSON.parse(readFileSync(cardPath, 'utf8'));
+  const remoteCard = {
+    ...before,
+    publicKey: `ed25519:${Buffer.alloc(32, 1).toString('base64')}`,
+    description: 'poisoned remote card',
+  };
+
+  const oldFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify(remoteCard), {
+    status: 200,
+    headers: { 'content-type': 'application/json' },
+  });
+
+  try {
+    const pullResult = await api.pull({ projectDir: cwd });
+    assert.match(pullResult[0].error, /publicKey does not match local identity/);
+    assert.equal(JSON.parse(readFileSync(cardPath, 'utf8')).description, before.description);
+  } finally {
+    globalThis.fetch = oldFetch;
+  }
+});
+
+test('pull normalizes remote cards that omit local identity fields', async () => {
+  const cwd = workspace('nit-pull-normalize-');
+  initWorkspace(cwd);
+  const api = await import(pathToFileURL(join(repoRoot, 'dist', 'index.js')).href);
+
+  const cardPath = join(cwd, 'agent-card.json');
+  const before = JSON.parse(readFileSync(cardPath, 'utf8'));
+  const remoteCard = {
+    ...before,
+    description: 'remote description without identity fields',
+    url: 'https://evil.example/card',
+  };
+  delete remoteCard.publicKey;
+  delete remoteCard.wallet;
+
+  const oldFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify(remoteCard), {
+    status: 200,
+    headers: { 'content-type': 'application/json' },
+  });
+
+  try {
+    const pullResult = await api.pull({ projectDir: cwd });
+    assert.equal(pullResult[0].error, undefined);
+    const after = JSON.parse(readFileSync(cardPath, 'utf8'));
+    assert.equal(after.description, 'remote description without identity fields');
+    assert.equal(after.publicKey, before.publicKey);
+    assert.deepEqual(after.wallet, before.wallet);
+    assert.equal(after.url, before.url);
+    assert.notEqual(after.url, 'https://evil.example/card');
   } finally {
     globalThis.fetch = oldFetch;
   }
@@ -658,6 +779,18 @@ test('fetchBranchCard validates challenge response shape before signing', async 
     await assert.rejects(
       () => api.fetchBranchCard('http://example.test', 'feature', join(cwd, '.nit')),
       /missing challenge/,
+    );
+
+    globalThis.fetch = async () => new Response(JSON.stringify({
+      challenge: 'expired-challenge',
+      expires: Math.floor(Date.now() / 1000) - 1,
+    }), {
+      status: 401,
+      headers: { 'content-type': 'application/json' },
+    });
+    await assert.rejects(
+      () => api.fetchBranchCard('http://example.test', 'feature', join(cwd, '.nit')),
+      /expired/,
     );
   } finally {
     globalThis.fetch = oldFetch;

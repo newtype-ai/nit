@@ -15,11 +15,9 @@
 // ---------------------------------------------------------------------------
 
 import { createHmac, createECDH, sign as cryptoSign } from 'node:crypto';
-import { promises as fs } from 'node:fs';
-import { join } from 'node:path';
 import { keccak_256 } from '@noble/hashes/sha3.js';
 import { secp256k1 } from '@noble/curves/secp256k1.js';
-import { loadPublicKey, loadPrivateKey } from './identity.js';
+import { loadPublicKey, loadPrivateKey, loadPrivateSeed } from './identity.js';
 
 // ---------------------------------------------------------------------------
 // Base58 encoding (Bitcoin/Solana alphabet)
@@ -134,10 +132,7 @@ export async function getSolanaAddress(nitDir: string): Promise<string> {
  * Returns EIP-55 checksummed address.
  */
 export async function getEvmAddress(nitDir: string): Promise<string> {
-  const keyPath = join(nitDir, 'identity', 'agent.key');
-  const privBase64 = (await fs.readFile(keyPath, 'utf-8')).trim();
-  const ed25519Seed = Buffer.from(privBase64, 'base64');
-
+  const ed25519Seed = await loadPrivateSeed(nitDir);
   const secp256k1PrivKey = deriveSecp256k1Seed(ed25519Seed);
   const secp256k1PubKey = getSecp256k1PublicKey(secp256k1PrivKey);
   const rawAddress = evmAddressFromPublicKey(secp256k1PubKey);
@@ -165,10 +160,7 @@ export async function getWalletAddresses(
 export async function loadSecp256k1RawKeyPair(
   nitDir: string,
 ): Promise<Uint8Array> {
-  const keyPath = join(nitDir, 'identity', 'agent.key');
-  const privBase64 = (await fs.readFile(keyPath, 'utf-8')).trim();
-  const ed25519Seed = Buffer.from(privBase64, 'base64');
-
+  const ed25519Seed = await loadPrivateSeed(nitDir);
   const secp256k1PrivKey = deriveSecp256k1Seed(ed25519Seed);
   const secp256k1PubKey = getSecp256k1PublicKey(secp256k1PrivKey);
 
@@ -199,9 +191,7 @@ export async function signEvmHash(
     throw new Error(`Expected 32-byte hash, got ${hash.length} bytes`);
   }
 
-  const keyPath = join(nitDir, 'identity', 'agent.key');
-  const privBase64 = (await fs.readFile(keyPath, 'utf-8')).trim();
-  const ed25519Seed = Buffer.from(privBase64, 'base64');
+  const ed25519Seed = await loadPrivateSeed(nitDir);
   const privKey = deriveSecp256k1Seed(ed25519Seed);
 
   // Sign with recovery byte (65 bytes: r[32] || s[32] || recovery[1])
