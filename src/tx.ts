@@ -17,6 +17,13 @@ import {
   getSolanaAddress,
 } from './wallet.js';
 import { readConfig } from './config.js';
+import { validateHttpUrl } from './validation.js';
+import { fetchWithTimeout, readResponseJson } from './http.js';
+
+const RPC_TIMEOUT_MS = 10_000;
+const MAX_RPC_RESPONSE_BYTES = 64 * 1024;
+const MAX_SIGNED_TX_BYTES = 512 * 1024;
+const BASE64_RE = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
 
 function parseHexData(data: string): Buffer {
   const hex = data.startsWith('0x') ? data.slice(2) : data;
@@ -27,6 +34,31 @@ function parseHexData(data: string): Buffer {
     throw new Error('Transaction data must be valid hex');
   }
   return Buffer.from(hex, 'hex');
+}
+
+function normalizeEvmSignedTx(signedTx: string): string {
+  const bytes = parseHexData(signedTx);
+  if (bytes.length > MAX_SIGNED_TX_BYTES) {
+    throw new Error(`Signed transaction cannot exceed ${MAX_SIGNED_TX_BYTES} bytes`);
+  }
+  const hex = signedTx.startsWith('0x') ? signedTx.slice(2) : signedTx;
+  return '0x' + hex;
+}
+
+function validateSolanaSignedTx(signedTx: string): void {
+  if (!BASE64_RE.test(signedTx)) {
+    throw new Error('Signed Solana transaction must be standard base64');
+  }
+  const bytes = Buffer.from(signedTx, 'base64');
+  if (bytes.length === 0) {
+    throw new Error('Signed transaction cannot be empty');
+  }
+  if (bytes.length > MAX_SIGNED_TX_BYTES) {
+    throw new Error(`Signed transaction cannot exceed ${MAX_SIGNED_TX_BYTES} bytes`);
+  }
+  if (bytes.toString('base64') !== signedTx) {
+    throw new Error('Signed Solana transaction must be canonical standard base64');
+  }
 }
 
 /**
@@ -91,6 +123,14 @@ export async function broadcast(
       );
     }
   }
+  validateHttpUrl(rpcUrl, 'RPC URL');
+
+  const normalizedSignedTx = chain === 'evm'
+    ? normalizeEvmSignedTx(signedTx)
+    : signedTx;
+  if (chain === 'solana') {
+    validateSolanaSignedTx(signedTx);
+  }
 
   const body =
     chain === 'evm'
@@ -98,7 +138,7 @@ export async function broadcast(
           jsonrpc: '2.0',
           id: 1,
           method: 'eth_sendRawTransaction',
-          params: [signedTx.startsWith('0x') ? signedTx : '0x' + signedTx],
+          params: [normalizedSignedTx],
         }
       : {
           jsonrpc: '2.0',
@@ -107,20 +147,23 @@ export async function broadcast(
           params: [signedTx, { encoding: 'base64' }],
         };
 
-  const res = await fetch(rpcUrl, {
+  const res = await fetchWithTimeout(rpcUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
+  }, {
+    label: `${chain} RPC request`,
+    timeoutMs: RPC_TIMEOUT_MS,
   });
 
   if (!res.ok) {
     throw new Error(`RPC request failed: ${res.status} ${res.statusText}`);
   }
 
-  const json = (await res.json()) as {
+  const json = await readResponseJson<{
     result?: string;
     error?: { message: string; code?: number };
-  };
+  }>(res, 'RPC response', MAX_RPC_RESPONSE_BYTES);
 
   if (json.error) {
     throw new Error(`RPC error: ${json.error.message}`);

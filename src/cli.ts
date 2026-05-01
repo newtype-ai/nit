@@ -44,6 +44,7 @@ import type { AuthProvider, NitSkillSource } from './types.js';
 import { formatDiff } from './diff.js';
 import { autoUpdate, checkForUpdate, installNitVersion, manualInstallCommand, version as nitVersion } from './update-check.js';
 import { loadMachineHash } from './fingerprint.js';
+import { fetchWithTimeout, readResponseJson } from './http.js';
 
 // ANSI color helpers
 const bold = (s: string) => `\x1b[1m${s}\x1b[0m`;
@@ -841,17 +842,12 @@ async function cmdDoctor(args: string[]) {
 
     if (checkRemote) {
       const healthUrl = new URL('/health', info.url).toString();
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 5_000);
-      let res: Response;
-      try {
-        res = await fetch(healthUrl, {
-          signal: controller.signal,
-          headers: { accept: 'application/json' },
-        });
-      } finally {
-        clearTimeout(timeout);
-      }
+      const res = await fetchWithTimeout(healthUrl, {
+        headers: { accept: 'application/json' },
+      }, {
+        label: 'Remote health check',
+        timeoutMs: 5_000,
+      });
 
       if (res.ok) {
         add('ok', 'remote health', `${healthUrl} HTTP ${res.status}`);
@@ -867,19 +863,14 @@ async function cmdDoctor(args: string[]) {
 
   if (checkPublish) {
     try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 3_000);
-      let res: Response;
-      try {
-        res = await fetch('https://registry.npmjs.org/@newtype-ai/nit/latest', {
-          signal: controller.signal,
-          headers: { accept: 'application/json' },
-        });
-      } finally {
-        clearTimeout(timeout);
-      }
+      const res = await fetchWithTimeout('https://registry.npmjs.org/@newtype-ai/nit/latest', {
+        headers: { accept: 'application/json' },
+      }, {
+        label: 'npm latest check',
+        timeoutMs: 3_000,
+      });
       if (res.ok) {
-        const data = (await res.json()) as { version?: string };
+        const data = await readResponseJson<{ version?: string }>(res, 'npm latest response', 16 * 1024);
         const latest = data.version ?? 'unknown';
         add(latest === nitVersion ? 'ok' : 'warn', 'npm latest', latest);
       } else {
@@ -1074,14 +1065,17 @@ async function cmdWallet() {
     const config = await rc(nitDir);
     const rpcUrl = config.rpc?.solana?.url || 'https://api.devnet.solana.com';
     {
-      const res = await fetch(rpcUrl, {
+      const res = await fetchWithTimeout(rpcUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           jsonrpc: '2.0', id: 1, method: 'getBalance', params: [sol],
         }),
+      }, {
+        label: 'Solana balance RPC',
+        timeoutMs: 5_000,
       });
-      const data = await res.json() as { result?: { value?: number } };
+      const data = await readResponseJson<{ result?: { value?: number } }>(res, 'Solana balance response', 64 * 1024);
       if (data.result?.value !== undefined) {
         const lamports = data.result.value;
         solBalance = (lamports / 1_000_000_000).toFixed(4) + ' SOL';

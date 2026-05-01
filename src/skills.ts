@@ -33,6 +33,7 @@ import type {
   SkillMetadata,
 } from './types.js';
 import { validateHttpUrl } from './validation.js';
+import { fetchWithTimeout, readResponseText } from './http.js';
 
 // ---------------------------------------------------------------------------
 // Framework detection and skills directory discovery
@@ -52,6 +53,9 @@ const GLOBAL_SKILLS_DIRS = [
   { marker: '.codex', skillsPath: '.codex/skills' },
   { marker: '.codeium', skillsPath: '.codeium/windsurf/skills' },
 ];
+
+const SKILL_FETCH_TIMEOUT_MS = 5_000;
+const MAX_SKILL_BYTES = 64 * 1024;
 
 /**
  * Detect the skills directory for this nit workspace.
@@ -137,12 +141,14 @@ export async function createSkillTemplate(
   let remoteContent: string | null = null;
   let remoteVersion: string | undefined;
   try {
-    const res = await fetch(`https://${domain}/skill.md`, {
+    const res = await fetchWithTimeout(`https://${domain}/skill.md`, {
       headers: { 'Accept': 'text/markdown, text/plain' },
-      signal: AbortSignal.timeout(5000),
+    }, {
+      label: `Fetch ${domain} SKILL.md`,
+      timeoutMs: SKILL_FETCH_TIMEOUT_MS,
     });
     if (res.ok) {
-      const text = await res.text();
+      const text = await readResponseText(res, `${domain} SKILL.md`, MAX_SKILL_BYTES);
       if (text.startsWith('---')) {
         remoteContent = text;
         remoteVersion = parseVersion(text);
@@ -354,12 +360,14 @@ export async function createNitSkill(
 
   if (config.source === 'newtype' || config.source === 'url') {
     try {
-      const res = await fetch(config.url ?? DEFAULT_NIT_SKILL_URL, {
+      const res = await fetchWithTimeout(config.url ?? DEFAULT_NIT_SKILL_URL, {
         headers: { 'Accept': 'text/markdown, text/plain' },
-        signal: AbortSignal.timeout(5000),
+      }, {
+        label: 'Fetch nit SKILL.md',
+        timeoutMs: SKILL_FETCH_TIMEOUT_MS,
       });
       if (res.ok) {
-        const text = await res.text();
+        const text = await readResponseText(res, 'nit SKILL.md', MAX_SKILL_BYTES);
         if (text.startsWith('---')) {
           content = text;
         }

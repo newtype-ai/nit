@@ -100,6 +100,7 @@ import {
   validateRemoteName,
   validateRpcChainName,
 } from './validation.js';
+import { fetchWithTimeout } from './http.js';
 
 // Re-export types and runtime validators for consumers
 export { assertAgentCardShape } from './types.js';
@@ -1298,17 +1299,12 @@ export async function remoteCheck(options?: {
   };
 
   try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 5_000);
-    let res: Response;
-    try {
-      res = await fetch(new URL('/health', apiBase).toString(), {
-        signal: controller.signal,
-        headers: { accept: 'application/json' },
-      });
-    } finally {
-      clearTimeout(timeout);
-    }
+    const res = await fetchWithTimeout(new URL('/health', apiBase).toString(), {
+      headers: { accept: 'application/json' },
+    }, {
+      label: 'Remote health check',
+      timeoutMs: 5_000,
+    });
     result.health.status = res.status;
     result.health.ok = res.ok || res.status === 404;
     result.health.optional = res.status === 404;

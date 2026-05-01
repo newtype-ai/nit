@@ -144,6 +144,19 @@ test('update check caches only valid semver versions', async () => {
 
   assert.equal(invalid, null);
   assert.match(readFileSync(cachePath, 'utf8'), /9\.9\.9/);
+
+  const oversized = await api.checkForUpdate({
+    force: true,
+    cachePath,
+    now: () => 4_000,
+    fetchImpl: async () => new Response('x', {
+      status: 200,
+      headers: { 'content-length': String(20_000) },
+    }),
+  });
+
+  assert.equal(oversized, null);
+  assert.match(readFileSync(cachePath, 'utf8'), /9\.9\.9/);
 });
 
 test('branch delete rejects traversal and preserves config', () => {
@@ -388,6 +401,31 @@ test('skill refresh can switch between embedded and custom URL sources', async (
     config = readFileSync(join(cwd, '.nit', 'config'), 'utf8');
     assert.match(config, /source = embedded/);
     assert.doesNotMatch(config, /url = http:\/\/skill\.test\/nit\.md/);
+  } finally {
+    globalThis.fetch = oldFetch;
+  }
+});
+
+test('skill refresh falls back when remote skill is oversized', async () => {
+  const cwd = workspace('nit-skill-oversized-');
+  initWorkspace(cwd);
+  const api = await import(pathToFileURL(join(repoRoot, 'dist', 'index.js')).href);
+  const skillPath = join(cwd, '.claude', 'skills', 'nit', 'SKILL.md');
+  const oldFetch = globalThis.fetch;
+
+  globalThis.fetch = async () => new Response('x', {
+    status: 200,
+    headers: { 'content-length': String(70 * 1024) },
+  });
+
+  try {
+    const result = await api.skillRefresh({
+      projectDir: cwd,
+      skillUrl: 'http://skill.test/nit.md',
+    });
+    assert.equal(result.config.source, 'url');
+    assert.equal(result.contentSource, 'embedded');
+    assert.match(readFileSync(skillPath, 'utf8'), /# nit — Git for Agent Identity/);
   } finally {
     globalThis.fetch = oldFetch;
   }
@@ -841,6 +879,32 @@ test('sign-tx rejects malformed hex before signing', () => {
   const valid = runNit(cwd, ['sign-tx', '--chain', 'solana', '00']);
   assert.equal(valid.status, 0, valid.stderr || valid.stdout);
   assert.equal(JSON.parse(valid.stdout).chain, 'solana');
+});
+
+test('broadcast validates RPC URL and caps responses', async () => {
+  const cwd = workspace('nit-broadcast-rpc-');
+  initWorkspace(cwd);
+  const api = await import(pathToFileURL(join(repoRoot, 'dist', 'index.js')).href);
+
+  await assert.rejects(
+    () => api.broadcast('evm', '0x01', { projectDir: cwd, rpcUrl: 'file:///tmp/rpc' }),
+    /http:\/\/ or https:\/\//,
+  );
+
+  const oldFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response('x', {
+    status: 200,
+    headers: { 'content-length': String(70 * 1024) },
+  });
+
+  try {
+    await assert.rejects(
+      () => api.broadcast('evm', '0x01', { projectDir: cwd, rpcUrl: 'http://rpc.test' }),
+      /RPC response exceeds/,
+    );
+  } finally {
+    globalThis.fetch = oldFetch;
+  }
 });
 
 test('sign --login emits clean JSON and verify-login checks it locally', () => {

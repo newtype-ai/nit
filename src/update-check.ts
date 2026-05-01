@@ -9,12 +9,14 @@ import { execFileSync } from 'node:child_process';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { readFile, writeFile } from 'node:fs/promises';
+import { fetchWithTimeout, readResponseJson } from './http.js';
 
 declare const __NIT_VERSION__: string;
 
 const CACHE_PATH = join(homedir(), '.nit-update-cache.json');
 const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000; // 1 day
 const FETCH_TIMEOUT_MS = 3_000; // 3s — never slow down the CLI
+const MAX_NPM_RESPONSE_BYTES = 16 * 1024;
 const REGISTRY_URL = 'https://registry.npmjs.org/@newtype-ai/nit/latest';
 
 export type UpdateMode = 'install' | 'notify' | 'off';
@@ -160,20 +162,18 @@ export async function checkForUpdate(options: CheckForUpdateOptions = {}): Promi
       : null;
   }
 
-  // Fetch from npm registry with timeout
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-
   try {
-    const fetchImpl = options.fetchImpl ?? fetch;
-    const res = await fetchImpl(REGISTRY_URL, {
-      signal: controller.signal,
+    const res = await fetchWithTimeout(REGISTRY_URL, {
       headers: { Accept: 'application/json' },
+    }, {
+      fetchImpl: options.fetchImpl,
+      label: 'Update check',
+      timeoutMs: FETCH_TIMEOUT_MS,
     });
 
     if (!res.ok) return null;
 
-    const data = (await res.json()) as { version?: string };
+    const data = await readResponseJson<{ version?: string }>(res, 'npm latest response', MAX_NPM_RESPONSE_BYTES);
     const latest = data.version;
     if (!latest) return null;
     if (!isPlainSemver(latest)) return null;
@@ -184,8 +184,6 @@ export async function checkForUpdate(options: CheckForUpdateOptions = {}): Promi
     return isNewer(latest, current) ? { current, latest } : null;
   } catch {
     return null;
-  } finally {
-    clearTimeout(timeout);
   }
 }
 
