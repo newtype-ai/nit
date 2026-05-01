@@ -325,6 +325,31 @@ test('corrupt objects are rejected instead of trusted by path', () => {
   assert.match(result.stderr, /Object hash mismatch/);
 });
 
+test('identity loading rejects mismatched agent id and private key', async () => {
+  const cwd = workspace('nit-identity-mismatch-');
+  initWorkspace(cwd);
+  const api = await import(pathToFileURL(join(repoRoot, 'dist', 'index.js')).href);
+  const agentIdPath = join(cwd, '.nit', 'identity', 'agent-id');
+  const keyPath = join(cwd, '.nit', 'identity', 'agent.key');
+  const originalAgentId = readFileSync(agentIdPath, 'utf8');
+
+  writeFileSync(agentIdPath, '00000000-0000-5000-8000-000000000000\n', 'utf8');
+  await assert.rejects(
+    () => api.status({ projectDir: cwd }),
+    /Agent ID does not match public key/,
+  );
+
+  writeFileSync(agentIdPath, originalAgentId, 'utf8');
+  const other = workspace('nit-identity-other-');
+  initWorkspace(other);
+  writeFileSync(keyPath, readFileSync(join(other, '.nit', 'identity', 'agent.key'), 'utf8'), 'utf8');
+
+  await assert.rejects(
+    () => api.sign('hello', { projectDir: cwd }),
+    /Private key does not match public key/,
+  );
+});
+
 test('init uses Newtype as the default nit skill source', async () => {
   const cwd = workspace('nit-skill-default-');
   const api = await import(pathToFileURL(join(repoRoot, 'dist', 'index.js')).href);

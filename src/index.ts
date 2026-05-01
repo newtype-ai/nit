@@ -97,6 +97,7 @@ import {
   validateBranchName,
   validateConfigValue,
   validateHttpUrl,
+  validateAgentId,
   validateRemoteName,
   validateRpcChainName,
 } from './validation.js';
@@ -166,7 +167,6 @@ const NIT_DIR = '.nit';
 const CARD_FILE = 'agent-card.json';
 const DEFAULT_API_BASE = 'https://api.newtype-ai.org';
 const CURRENT_PROTOCOL_VERSION = '0.3.0';
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const BASE64_RE = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
 
 function defaultCardUrl(agentId: string): string {
@@ -762,9 +762,7 @@ function parseLoginPayloadShape(payload: unknown): LoginPayload {
   if (typeof p.agent_id !== 'string' || p.agent_id.length === 0) {
     throw new Error('Login payload is missing agent_id');
   }
-  if (!UUID_RE.test(p.agent_id)) {
-    throw new Error('Login payload agent_id must be a UUID');
-  }
+  validateAgentId(p.agent_id, 'Login payload agent_id');
   if (typeof p.domain !== 'string' || p.domain.length === 0) {
     throw new Error('Login payload is missing domain');
   }

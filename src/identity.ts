@@ -21,6 +21,7 @@ import {
 } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
+import { validateAgentId } from './validation.js';
 
 // ---------------------------------------------------------------------------
 // base64url <-> standard base64 conversion
@@ -37,6 +38,7 @@ function base64ToBase64url(b64: string): string {
 }
 
 const BASE64_RE = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
+const KEYPAIR_CHECK_MESSAGE = Buffer.from('nit identity key check', 'utf-8');
 
 function decodeRawKey(value: string, label: string): Buffer {
   if (!BASE64_RE.test(value)) {
@@ -47,6 +49,42 @@ function decodeRawKey(value: string, label: string): Buffer {
     throw new Error(`${label} must be a 32-byte standard base64 key`);
   }
   return decoded;
+}
+
+function decodeSignature(value: string, label: string): Buffer {
+  if (!BASE64_RE.test(value)) {
+    throw new Error(`${label} must be standard base64`);
+  }
+  const decoded = Buffer.from(value, 'base64');
+  if (decoded.length !== 64 || decoded.toString('base64') !== value) {
+    throw new Error(`${label} must be a 64-byte standard base64 signature`);
+  }
+  return decoded;
+}
+
+function publicKeyObjectFromRaw(pubBase64: string): KeyObject {
+  const xB64url = base64ToBase64url(pubBase64);
+  return createPublicKey({
+    key: { kty: 'OKP', crv: 'Ed25519', x: xB64url },
+    format: 'jwk',
+  });
+}
+
+function privateKeyObjectFromRaw(pubBase64: string, privBase64: string): KeyObject {
+  const xB64url = base64ToBase64url(pubBase64);
+  const dB64url = base64ToBase64url(privBase64);
+  return createPrivateKey({
+    key: { kty: 'OKP', crv: 'Ed25519', x: xB64url, d: dB64url },
+    format: 'jwk',
+  });
+}
+
+function assertKeypairMatches(pubBase64: string, privateKey: KeyObject): void {
+  const publicKey = publicKeyObjectFromRaw(pubBase64);
+  const sig = sign(null, KEYPAIR_CHECK_MESSAGE, privateKey);
+  if (!verify(null, KEYPAIR_CHECK_MESSAGE, publicKey, sig)) {
+    throw new Error('Private key does not match public key');
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -124,16 +162,11 @@ export async function loadPrivateKey(nitDir: string): Promise<KeyObject> {
     );
   }
 
-  // Reconstruct the private KeyObject via JWK
   decodeRawKey(pubBase64, 'Public key');
   decodeRawKey(privBase64, 'Private key');
-  const xB64url = base64ToBase64url(pubBase64);
-  const dB64url = base64ToBase64url(privBase64);
-
-  return createPrivateKey({
-    key: { kty: 'OKP', crv: 'Ed25519', x: xB64url, d: dB64url },
-    format: 'jwk',
-  });
+  const privateKey = privateKeyObjectFromRaw(pubBase64, privBase64);
+  assertKeypairMatches(pubBase64, privateKey);
+  return privateKey;
 }
 
 /**
@@ -156,6 +189,7 @@ export async function loadRawKeyPair(nitDir: string): Promise<Uint8Array> {
  * Read the private Ed25519 seed as raw bytes.
  */
 export async function loadPrivateSeed(nitDir: string): Promise<Buffer> {
+  const pubBase64 = await loadPublicKey(nitDir);
   const keyPath = join(nitDir, 'identity', 'agent.key');
   let privBase64: string;
   try {
@@ -165,7 +199,10 @@ export async function loadPrivateSeed(nitDir: string): Promise<Buffer> {
       'Private key not found at .nit/identity/agent.key. Regenerate with `nit init`.',
     );
   }
-  return decodeRawKey(privBase64, 'Private key');
+  const privateSeed = decodeRawKey(privBase64, 'Private key');
+  const privateKey = privateKeyObjectFromRaw(pubBase64, privBase64);
+  assertKeypairMatches(pubBase64, privateKey);
+  return privateSeed;
 }
 
 // ---------------------------------------------------------------------------
@@ -190,7 +227,9 @@ export function parsePublicKeyField(field: string): string {
       `Invalid publicKey format: expected "ed25519:<base64>", got "${field}"`,
     );
   }
-  return field.slice(prefix.length);
+  const pubBase64 = field.slice(prefix.length);
+  decodeRawKey(pubBase64, 'Public key');
+  return pubBase64;
 }
 
 // ---------------------------------------------------------------------------
@@ -218,18 +257,21 @@ export function verifySignature(
   message: string,
   signatureBase64: string,
 ): boolean {
-  const xB64url = base64ToBase64url(pubBase64);
-
-  const publicKeyObj = createPublicKey({
-    key: { kty: 'OKP', crv: 'Ed25519', x: xB64url },
-    format: 'jwk',
-  });
+  let publicKeyObj: KeyObject;
+  let signature: Buffer;
+  try {
+    decodeRawKey(pubBase64, 'Public key');
+    signature = decodeSignature(signatureBase64, 'Signature');
+    publicKeyObj = publicKeyObjectFromRaw(pubBase64);
+  } catch {
+    return false;
+  }
 
   return verify(
     null,
     Buffer.from(message, 'utf-8'),
     publicKeyObj,
-    Buffer.from(signatureBase64, 'base64'),
+    signature,
   );
 }
 
@@ -273,13 +315,21 @@ export function deriveAgentId(publicKeyField: string): string {
  */
 export async function loadAgentId(nitDir: string): Promise<string> {
   const idPath = join(nitDir, 'identity', 'agent-id');
+  let agentId: string;
   try {
-    return (await fs.readFile(idPath, 'utf-8')).trim();
+    agentId = (await fs.readFile(idPath, 'utf-8')).trim();
   } catch {
     throw new Error(
       'No agent ID found. Run `nit init` to generate identity.',
     );
   }
+  validateAgentId(agentId);
+  const pubBase64 = await loadPublicKey(nitDir);
+  const expected = deriveAgentId(formatPublicKeyField(pubBase64));
+  if (agentId.toLowerCase() !== expected) {
+    throw new Error('Agent ID does not match public key');
+  }
+  return agentId.toLowerCase();
 }
 
 /**
@@ -289,8 +339,9 @@ export async function saveAgentId(
   nitDir: string,
   agentId: string,
 ): Promise<void> {
+  validateAgentId(agentId);
   const idPath = join(nitDir, 'identity', 'agent-id');
-  await fs.writeFile(idPath, agentId + '\n', 'utf-8');
+  await fs.writeFile(idPath, agentId.toLowerCase() + '\n', 'utf-8');
 }
 
 // ---------------------------------------------------------------------------

@@ -4,6 +4,7 @@
 
 const REF_NAME_RE = /^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$/;
 const RPC_CHAIN_RE = /^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$/;
+const AGENT_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function assertSingleLine(value: string, label: string): void {
   if (/[\x00-\x1f\x7f]/.test(value)) {
@@ -106,5 +107,15 @@ export function validateConfigValue(value: string, label: string): void {
 export function validateObjectHash(hash: string, label = 'Object hash'): void {
   if (!/^[0-9a-f]{64}$/.test(hash)) {
     throw new Error(`${label} must be a 64-character lowercase hex SHA-256 hash`);
+  }
+}
+
+export function validateAgentId(agentId: string, label = 'Agent ID'): void {
+  if (!agentId) {
+    throw new Error(`${label} cannot be empty`);
+  }
+  assertSingleLine(agentId, label);
+  if (!AGENT_ID_RE.test(agentId)) {
+    throw new Error(`${label} must be a UUIDv5`);
   }
 }
