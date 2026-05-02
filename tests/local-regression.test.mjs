@@ -194,6 +194,42 @@ test('remote add rejects unsafe names before writing config', () => {
   assert.equal(readFileSync(configPath, 'utf8'), before);
 });
 
+test('commands reject malformed config instead of ignoring it', () => {
+  const cwd = workspace('nit-config-');
+  initWorkspace(cwd);
+
+  const configPath = join(cwd, '.nit', 'config');
+  const cases = [
+    {
+      config: '[remote "origin"]\n  url = https://api.newtype-ai.org\n  typo = ignored\n',
+      pattern: /Invalid \.nit\/config line 3: unknown remote key "typo"/,
+    },
+    {
+      config: '[remote "origin"]\n  url = file:///tmp/socket\n',
+      pattern: /Invalid \.nit\/config line 2:.*http:\/\/ or https:\/\//,
+    },
+    {
+      config: '[rpc "evm"]\n',
+      pattern: /Invalid \.nit\/config line 1: rpc "evm" requires a url/,
+    },
+    {
+      config: '[runtime]\n  provider = OpenAI\n  model = gpt\n  harness = codex\n  declared_at = 123abc\n',
+      pattern: /Invalid \.nit\/config line 1: runtime\.provider must contain only lowercase/,
+    },
+    {
+      config: 'url = https://api.newtype-ai.org\n',
+      pattern: /Invalid \.nit\/config line 1: key "url" appears before any section/,
+    },
+  ];
+
+  for (const item of cases) {
+    writeFileSync(configPath, item.config, 'utf8');
+    const result = runNit(cwd, ['remote']);
+    assert.notEqual(result.status, 0, item.config);
+    assert.match(stripAnsi(result.stderr), item.pattern);
+  }
+});
+
 test('rpc set-url rejects unsafe chain names and non-http URLs', () => {
   const cwd = workspace('nit-rpc-');
   initWorkspace(cwd);

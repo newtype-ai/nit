@@ -281,15 +281,40 @@ export async function clearRuntime(nitDir: string): Promise<void> {
 function parseConfig(raw: string): NitConfig {
   const remotes: Record<string, NitRemoteConfig> = {};
   const rpc: Record<string, NitRpcConfig> = {};
-  let currentSection: string | null = null;
+  let currentSection: 'remote' | 'rpc' | 'nit' | 'skills' | 'runtime' | null = null;
   let currentRemote: string | null = null;
   let currentRpcChain: string | null = null;
   let currentNitSubsection: string | null = null;
   let skillsDir: string | undefined;
   const nitSkillFields: Partial<Record<'source' | 'url', string>> = {};
   const runtimeFields: Partial<Record<'provider' | 'model' | 'harness' | 'declared_at', string>> = {};
+  const seenKeys = new Set<string>();
+  const rpcSections = new Map<string, number>();
+  let skillsSectionLine: number | null = null;
+  let nitSkillSectionLine: number | null = null;
+  let runtimeSectionLine: number | null = null;
 
-  for (const line of raw.split('\n')) {
+  const fail = (lineNo: number, message: string): never => {
+    throw new Error(`Invalid .nit/config line ${lineNo}: ${message}`);
+  };
+  const validateAtLine = (lineNo: number, validate: () => void): void => {
+    try {
+      validate();
+    } catch (error) {
+      fail(lineNo, error instanceof Error ? error.message : String(error));
+    }
+  };
+  const markKey = (lineNo: number, sectionKey: string, key: string): void => {
+    const marker = `${sectionKey}.${key}`;
+    if (seenKeys.has(marker)) {
+      fail(lineNo, `duplicate key "${key}"`);
+    }
+    seenKeys.add(marker);
+  };
+
+  const lines = raw.split('\n');
+  for (const [index, line] of lines.entries()) {
+    const lineNo = index + 1;
     const trimmed = line.trim();
 
     // Skip empty lines and comments
@@ -300,6 +325,7 @@ function parseConfig(raw: string): NitConfig {
     if (remoteMatch) {
       currentSection = 'remote';
       currentRemote = remoteMatch[1];
+      validateAtLine(lineNo, () => validateRemoteName(currentRemote!));
       currentRpcChain = null;
       currentNitSubsection = null;
       if (!remotes[currentRemote]) {
@@ -313,6 +339,8 @@ function parseConfig(raw: string): NitConfig {
     if (rpcMatch) {
       currentSection = 'rpc';
       currentRpcChain = rpcMatch[1];
+      validateAtLine(lineNo, () => validateRpcChainName(currentRpcChain!));
+      rpcSections.set(currentRpcChain, lineNo);
       currentRemote = null;
       currentNitSubsection = null;
       continue;
@@ -321,8 +349,12 @@ function parseConfig(raw: string): NitConfig {
     // Section header: [nit "skill"]
     const nitMatch = trimmed.match(/^\[nit\s+"([^"]+)"\]$/);
     if (nitMatch) {
+      if (nitMatch[1] !== 'skill') {
+        fail(lineNo, `unknown nit subsection "${nitMatch[1]}"`);
+      }
       currentSection = 'nit';
       currentNitSubsection = nitMatch[1];
+      nitSkillSectionLine = lineNo;
       currentRemote = null;
       currentRpcChain = null;
       continue;
@@ -331,6 +363,7 @@ function parseConfig(raw: string): NitConfig {
     // Section header: [skills]
     if (trimmed === '[skills]') {
       currentSection = 'skills';
+      skillsSectionLine = lineNo;
       currentRemote = null;
       currentRpcChain = null;
       currentNitSubsection = null;
@@ -340,38 +373,89 @@ function parseConfig(raw: string): NitConfig {
     // Section header: [runtime]
     if (trimmed === '[runtime]') {
       currentSection = 'runtime';
+      runtimeSectionLine = lineNo;
       currentRemote = null;
       currentRpcChain = null;
       currentNitSubsection = null;
       continue;
     }
 
+    if (trimmed.startsWith('[')) {
+      fail(lineNo, `unknown section "${trimmed}"`);
+    }
+
     // Key-value pair: key = value
     const kvMatch = trimmed.match(/^(\w+)\s*=\s*(.+)$/);
     if (kvMatch) {
       const [, key, value] = kvMatch;
+      const parsedValue = value.trim();
+      if (!currentSection) {
+        fail(lineNo, `key "${key}" appears before any section`);
+      }
       if (currentSection === 'remote' && currentRemote !== null) {
+        markKey(lineNo, `remote.${currentRemote}`, key);
         if (key === 'url') {
-          remotes[currentRemote].url = value.trim();
+          validateAtLine(lineNo, () => validateHttpUrl(parsedValue, `Remote URL for "${currentRemote}"`));
+          remotes[currentRemote].url = parsedValue;
         } else if (key === 'credential') {
-          remotes[currentRemote].credential = value.trim();
+          validateAtLine(lineNo, () => validateConfigValue(parsedValue, `Remote credential for "${currentRemote}"`));
+          remotes[currentRemote].credential = parsedValue;
+        } else {
+          fail(lineNo, `unknown remote key "${key}"`);
         }
       } else if (currentSection === 'rpc' && currentRpcChain !== null) {
+        markKey(lineNo, `rpc.${currentRpcChain}`, key);
         if (key === 'url') {
-          rpc[currentRpcChain] = { url: value.trim() };
+          validateAtLine(lineNo, () => validateHttpUrl(parsedValue, `RPC URL for "${currentRpcChain}"`));
+          rpc[currentRpcChain] = { url: parsedValue };
+        } else {
+          fail(lineNo, `unknown rpc key "${key}"`);
         }
       } else if (currentSection === 'skills') {
+        markKey(lineNo, 'skills', key);
         if (key === 'dir') {
-          skillsDir = value.trim();
+          validateAtLine(lineNo, () => validateConfigValue(parsedValue, 'Skills directory'));
+          skillsDir = parsedValue;
+        } else {
+          fail(lineNo, `unknown skills key "${key}"`);
         }
       } else if (currentSection === 'runtime') {
+        markKey(lineNo, 'runtime', key);
         if (key === 'provider' || key === 'model' || key === 'harness' || key === 'declared_at') {
-          runtimeFields[key] = value.trim();
+          runtimeFields[key] = parsedValue;
+        } else {
+          fail(lineNo, `unknown runtime key "${key}"`);
         }
       } else if (currentSection === 'nit' && currentNitSubsection === 'skill') {
+        markKey(lineNo, 'nit.skill', key);
         if (key === 'source' || key === 'url') {
-          nitSkillFields[key] = value.trim();
+          nitSkillFields[key] = parsedValue;
+        } else {
+          fail(lineNo, `unknown nit skill key "${key}"`);
         }
+      }
+      continue;
+    }
+
+    fail(lineNo, `malformed line "${trimmed}"`);
+  }
+
+  for (const [chain, lineNo] of rpcSections.entries()) {
+    if (!rpc[chain]?.url) {
+      fail(lineNo, `rpc "${chain}" requires a url`);
+    }
+  }
+  if (skillsSectionLine !== null && !skillsDir) {
+    fail(skillsSectionLine, 'skills section requires dir');
+  }
+  if (nitSkillSectionLine !== null && !nitSkillFields.source) {
+    fail(nitSkillSectionLine, 'nit skill section requires source');
+  }
+  if (runtimeSectionLine !== null) {
+    const requiredRuntimeKeys = ['provider', 'model', 'harness', 'declared_at'] as const;
+    for (const key of requiredRuntimeKeys) {
+      if (!runtimeFields[key]) {
+        fail(runtimeSectionLine, `runtime section requires ${key}`);
       }
     }
   }
@@ -381,15 +465,26 @@ function parseConfig(raw: string): NitConfig {
     config.rpc = rpc;
   }
   if (runtimeFields.provider && runtimeFields.model && runtimeFields.harness && runtimeFields.declared_at) {
-    const declaredAt = parseInt(runtimeFields.declared_at, 10);
-    if (Number.isFinite(declaredAt)) {
-      config.runtime = {
-        provider: runtimeFields.provider,
-        model: runtimeFields.model,
-        harness: runtimeFields.harness,
-        declared_at: declaredAt,
-      };
+    const lineNo = runtimeSectionLine ?? 1;
+    validateAtLine(lineNo, () => validateRuntimeField(runtimeFields.provider!, 'runtime.provider'));
+    validateAtLine(lineNo, () => validateRuntimeField(runtimeFields.model!, 'runtime.model'));
+    validateAtLine(lineNo, () => validateRuntimeField(runtimeFields.harness!, 'runtime.harness'));
+    if (!PROVIDER_RE.test(runtimeFields.provider)) {
+      fail(lineNo, 'runtime.provider must contain only lowercase letters, digits, and hyphens');
     }
+    if (!/^\d+$/.test(runtimeFields.declared_at)) {
+      fail(lineNo, 'runtime.declared_at must be an integer');
+    }
+    const declaredAt = Number(runtimeFields.declared_at);
+    if (!Number.isSafeInteger(declaredAt)) {
+      fail(lineNo, 'runtime.declared_at must be a safe integer');
+    }
+    config.runtime = {
+      provider: runtimeFields.provider,
+      model: runtimeFields.model,
+      harness: runtimeFields.harness,
+      declared_at: declaredAt,
+    };
   }
   if (nitSkillFields.source) {
     const nitSkill: NitSkillConfig = {
@@ -398,7 +493,7 @@ function parseConfig(raw: string): NitConfig {
     if (nitSkillFields.url) {
       nitSkill.url = nitSkillFields.url;
     }
-    validateNitSkillConfig(nitSkill);
+    validateAtLine(nitSkillSectionLine ?? 1, () => validateNitSkillConfig(nitSkill));
     config.nitSkill = nitSkill;
   }
   return config;
