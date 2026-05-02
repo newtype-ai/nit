@@ -17,10 +17,30 @@ function workspace(prefix) {
   return dir;
 }
 
-function runNit(cwd, args) {
+function bareWorkspace(prefix) {
+  return mkdtempSync(join(tmpdir(), prefix));
+}
+
+function fakeHomeWithSkill(prefix, id = 'global-only') {
+  const home = mkdtempSync(join(tmpdir(), prefix));
+  const skillDir = join(home, '.claude', 'skills', id);
+  mkdirSync(skillDir, { recursive: true });
+  writeFileSync(join(skillDir, 'SKILL.md'), [
+    '---',
+    'name: Global Skill',
+    'description: Global skill should resolve only when explicitly referenced',
+    '---',
+    '',
+    '# Global Skill',
+    '',
+  ].join('\n'), 'utf8');
+  return home;
+}
+
+function runNit(cwd, args, envOverride = {}) {
   return spawnSync(process.execPath, [cliPath, ...args], {
     cwd,
-    env,
+    env: { ...env, ...envOverride },
     encoding: 'utf8',
   });
 }
@@ -427,6 +447,50 @@ test('init can skip installing the nit skill without deleting features', () => {
   assert.equal(existsSync(join(cwd, '.claude', 'skills', 'nit', 'SKILL.md')), false);
   const config = readFileSync(join(cwd, '.nit', 'config'), 'utf8');
   assert.match(config, /source = none/);
+});
+
+test('init does not seed fresh cards from user-global skills', () => {
+  const cwd = bareWorkspace('nit-global-seed-');
+  const home = fakeHomeWithSkill('nit-home-global-');
+  const result = runNit(cwd, ['init', '--skill-source', 'none'], { HOME: home });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+
+  const card = JSON.parse(readFileSync(join(cwd, 'agent-card.json'), 'utf8'));
+  assert.deepEqual(card.skills, []);
+  assert.match(stripAnsi(result.stdout), /Skills:\s+\(none discovered\)/);
+
+  const config = readFileSync(join(cwd, '.nit', 'config'), 'utf8');
+  assert.equal(config.includes(join(cwd, '.agents', 'skills')), true);
+  assert.equal(config.includes(home), false);
+});
+
+test('commit resolves explicit skill pointers from user-global skills', () => {
+  const cwd = bareWorkspace('nit-global-resolve-');
+  const home = fakeHomeWithSkill('nit-home-resolve-');
+  const cardPath = join(cwd, 'agent-card.json');
+  writeFileSync(cardPath, JSON.stringify({
+    name: 'global resolver',
+    description: 'uses explicit global skill pointer',
+    skills: [{ id: 'global-only' }],
+  }, null, 2), 'utf8');
+
+  const initResult = runNit(cwd, ['init', '--skill-source', 'none'], { HOME: home });
+  assert.equal(initResult.status, 0, initResult.stderr || initResult.stdout);
+
+  const card = JSON.parse(readFileSync(cardPath, 'utf8'));
+  assert.deepEqual(card.skills, [{ id: 'global-only' }]);
+  card.description = 'resolve the explicit pointer';
+  writeFileSync(cardPath, JSON.stringify(card, null, 2), 'utf8');
+
+  const commitResult = runNit(cwd, ['commit', '-m', 'resolve explicit skill'], { HOME: home });
+  assert.equal(commitResult.status, 0, commitResult.stderr || commitResult.stdout);
+
+  const resolved = JSON.parse(readFileSync(cardPath, 'utf8'));
+  assert.deepEqual(resolved.skills, [{
+    id: 'global-only',
+    name: 'Global Skill',
+    description: 'Global skill should resolve only when explicitly referenced',
+  }]);
 });
 
 test('skill refresh can switch between embedded and custom URL sources', async () => {

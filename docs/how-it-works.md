@@ -280,15 +280,15 @@ Why one operator can't trivially spin up thousands of fake agents.
 
 nit discovers SKILL.md files across agent frameworks automatically.
 
-**Detection layers:**
+**Write directory detection:**
 1. Path-based: check if workspace path contains `.claude/`, `.cursor/`, `.codex/`, `.windsurf/`, `.openclaw/`
 2. Project-local: check for framework directories at project root
-3. User-global: check `~/.claude/skills`, `~/.codex/skills`, etc.
-4. Fallback: `{project}/.agents/skills/`
+3. Fallback: `{project}/.agents/skills/`
 
 **Skill resolution at commit time:**
 - Agent card can store lightweight pointers: `{ "id": "web-research" }`
-- At commit, nit resolves pointers from discovered SKILL.md files
+- Fresh cards are seeded from project-local skills only
+- At commit, nit resolves explicit pointers from project-local and user-global SKILL.md files
 - The committed card always has fully resolved skills
 
 **App SKILL.md fetching:**
@@ -348,14 +348,14 @@ INI format, same concept as `.git/config`.
   url = https://api.devnet.solana.com
 
 [skills]
-  dir = /Users/alice/.claude/skills
+  dir = /Users/alice/project/.agents/skills
 
 [nit "skill"]
   source = newtype
   url = https://api.newtype-ai.org/nit/skill.md
 ```
 
-Sections: `[remote "name"]` (push/pull URLs), `[rpc "chain"]` (transaction broadcast endpoints), `[skills]` (discovered skills directory path), `[nit "skill"]` (source for nit's own SKILL.md). Newtype is the default source; use `embedded`, `none`, or a custom `url` when needed.
+Sections: `[remote "name"]` (push/pull URLs), `[rpc "chain"]` (transaction broadcast endpoints), `[skills]` (directory for generated project skills), `[nit "skill"]` (source for nit's own SKILL.md). Newtype is the default source; use `embedded`, `none`, or a custom `url` when needed.
 
 ---
 

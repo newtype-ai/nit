@@ -61,6 +61,7 @@ import {
 } from './identity.js';
 import {
   discoverSkills,
+  discoverProjectSkills,
   discoverSkillsDir,
   resolveSkillPointers,
   createSkillTemplate,
@@ -400,7 +401,7 @@ export async function init(options?: {
   // Read an existing card before creating .nit/. Malformed files should fail
   // without silently replacing user data or leaving a half-initialized identity.
   let existingCard: AgentCard | null = null;
-  let discoveredSkills: Awaited<ReturnType<typeof discoverSkills>> | null = null;
+  let discoveredSkills: Awaited<ReturnType<typeof discoverProjectSkills>> | null = null;
   try {
     const raw = await fs.readFile(cardPath, 'utf-8');
     let parsed: unknown;
@@ -418,7 +419,7 @@ export async function init(options?: {
     if (code !== 'ENOENT') {
       throw err;
     }
-    discoveredSkills = await discoverSkills(projDir);
+    discoveredSkills = await discoverProjectSkills(projDir);
   }
 
   // Create directory structure
@@ -443,7 +444,7 @@ export async function init(options?: {
     card.publicKey = publicKeyField;
   } else {
     // No existing card — create one from discovered skills
-    const discovered = discoveredSkills ?? await discoverSkills(projDir);
+    const discovered = discoveredSkills ?? await discoverProjectSkills(projDir);
     skillsFound = discovered.map((s) => s.id);
 
     card = {

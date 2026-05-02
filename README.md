@@ -93,6 +93,8 @@ Auto-discovers skills from major agent frameworks:
 - `.codex/skills/` — OpenAI Codex
 - `.openclaw/workspace/skills/` — OpenClaw
 
+Fresh cards are seeded from project-local skills only. User-global skills can still resolve explicit pointers at commit time, and `[skills] dir = ...` controls where nit writes generated skills.
+
 ### Default hosted remote
 
 `nit` is local-first and speaks an open remote protocol. Newtype is the default hosted remote for agents that want free hosting and verification without running infrastructure. You can point `origin` at any compatible server:

@@ -1,14 +1,14 @@
 // ---------------------------------------------------------------------------
 // nit — SKILL.md discovery and resolution
 //
-// Searches ALL known agent framework locations for SKILL.md files, parses
-// YAML frontmatter, and resolves skill pointers in agent cards.
+// Searches known agent framework locations for SKILL.md files, parses YAML
+// frontmatter, and resolves skill pointers in agent cards.
 //
 // SKILL.md is an open standard (agentskills.io/specification) adopted by
 // Claude Code, Cursor, Windsurf, Codex, OpenClaw, Aider, and others.
 // The file format is identical — only the directory path differs per framework.
 //
-// Search locations (project-local first, then user-global):
+// Search locations:
 //   Project-local:
 //     1. ./.claude/skills/       — Claude Code
 //     2. ./.cursor/skills/       — Cursor
@@ -16,9 +16,11 @@
 //     4. ./.codex/skills/        — OpenAI Codex CLI
 //     5. ./.agents/skills/       — Generic / agent-local
 //   User-global:
-//     6. ~/.claude/skills/       — Claude Code + Cursor (shared)
-//     7. ~/.codex/skills/        — Codex CLI
-//     8. ~/.codeium/windsurf/skills/ — Windsurf
+//     Used only for resolving explicit skill pointers, never to seed a fresh
+//     public agent card.
+//     ~/.claude/skills/       — Claude Code + Cursor (shared)
+//     ~/.codex/skills/        — Codex CLI
+//     ~/.codeium/windsurf/skills/ — Windsurf
 // ---------------------------------------------------------------------------
 
 import { promises as fs } from 'node:fs';
@@ -63,14 +65,16 @@ const MAX_SKILL_BYTES = 64 * 1024;
  * Detection layers:
  *   1. Path-based: nit repo's own path reveals the framework
  *   2. Project-local: check for framework directories at project level
- *   3. User-global: check for framework directories at ~/
- *   4. Fallback: <projectDir>/.agents/skills/
+ *   3. Fallback: <projectDir>/.agents/skills/
+ *
+ * User-global skill stores are readable for explicit pointer resolution, but
+ * nit should not write project state into them unless the user configures
+ * [skills].dir that way.
  */
 export async function discoverSkillsDir(
   projectDir: string,
 ): Promise<string> {
   const absProject = resolve(projectDir);
-  const home = homedir();
 
   // Layer 1: Detect from nit repo's location (path contains framework marker)
   // Extract the root ABOVE the marker to avoid double-nesting
@@ -89,18 +93,6 @@ export async function discoverSkillsDir(
       const stat = await fs.stat(join(absProject, marker));
       if (stat.isDirectory()) {
         return join(absProject, skillsPath);
-      }
-    } catch {
-      // Directory doesn't exist — try next
-    }
-  }
-
-  // Layer 3: Detect from user-global framework directories
-  for (const { marker, skillsPath } of GLOBAL_SKILLS_DIRS) {
-    try {
-      const stat = await fs.stat(join(home, marker));
-      if (stat.isDirectory()) {
-        return join(home, skillsPath);
       }
     } catch {
       // Directory doesn't exist — try next
@@ -202,6 +194,16 @@ function isNewerVersion(remote: string, local: string): boolean {
 
 
 /**
+ * Discover project-local SKILL.md files from standard locations.
+ * Used when seeding a fresh public agent card.
+ */
+export async function discoverProjectSkills(
+  projectDir: string,
+): Promise<SkillMetadata[]> {
+  return discoverSkillsFromDirs(projectSkillDirs(projectDir));
+}
+
+/**
  * Discover all SKILL.md files from standard locations.
  * Returns metadata parsed from each file's YAML frontmatter.
  * Later entries do NOT override earlier ones (project-local takes priority).
@@ -209,20 +211,13 @@ function isNewerVersion(remote: string, local: string): boolean {
 export async function discoverSkills(
   projectDir: string,
 ): Promise<SkillMetadata[]> {
-  const home = homedir();
-  const searchDirs = [
-    // Project-local (all known agent frameworks)
-    join(projectDir, '.claude', 'skills'),
-    join(projectDir, '.cursor', 'skills'),
-    join(projectDir, '.windsurf', 'skills'),
-    join(projectDir, '.codex', 'skills'),
-    join(projectDir, '.agents', 'skills'),
-    // User-global
-    join(home, '.claude', 'skills'),       // Claude Code + Cursor (shared)
-    join(home, '.codex', 'skills'),        // Codex CLI
-    join(home, '.codeium', 'windsurf', 'skills'), // Windsurf
-  ];
+  return discoverSkillsFromDirs([
+    ...projectSkillDirs(projectDir),
+    ...globalSkillDirs(),
+  ]);
+}
 
+async function discoverSkillsFromDirs(searchDirs: string[]): Promise<SkillMetadata[]> {
   const seen = new Set<string>();
   const skills: SkillMetadata[] = [];
 
@@ -237,6 +232,16 @@ export async function discoverSkills(
   }
 
   return skills;
+}
+
+function projectSkillDirs(projectDir: string): string[] {
+  const absProject = resolve(projectDir);
+  return FRAMEWORK_MARKERS.map(({ skillsPath }) => join(absProject, skillsPath));
+}
+
+function globalSkillDirs(): string[] {
+  const home = homedir();
+  return GLOBAL_SKILLS_DIRS.map(({ skillsPath }) => join(home, skillsPath));
 }
 
 /**
