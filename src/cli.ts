@@ -147,7 +147,7 @@ async function main() {
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error(red(`error: ${msg}`));
+    printCliError(msg);
     process.exit(1);
   }
 
@@ -156,6 +156,13 @@ async function main() {
     console.log(`nit ${nitVersion}`);
   }
 
+}
+
+function printCliError(msg: string): void {
+  console.error(red(`error: ${msg}`));
+  if (msg.startsWith('Invalid .nit/config line ')) {
+    console.error(dim('hint: edit .nit/config; malformed config is rejected instead of ignored.'));
+  }
 }
 
 // ---------------------------------------------------------------------------

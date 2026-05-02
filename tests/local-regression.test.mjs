@@ -227,6 +227,7 @@ test('commands reject malformed config instead of ignoring it', () => {
     const result = runNit(cwd, ['remote']);
     assert.notEqual(result.status, 0, item.config);
     assert.match(stripAnsi(result.stderr), item.pattern);
+    assert.match(stripAnsi(result.stderr), /hint: edit \.nit\/config/);
   }
 });
 
