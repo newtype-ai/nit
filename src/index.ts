@@ -1187,7 +1187,10 @@ export async function push(options?: {
   const currentBranch = await getCurrentBranch(nitDir);
 
   const toPush = options?.all
-    ? branches
+    ? [
+        ...branches.filter((b) => b.name === 'main'),
+        ...branches.filter((b) => b.name !== 'main'),
+      ]
     : branches.filter((b) => b.name === currentBranch);
 
   if (toPush.length === 0) {

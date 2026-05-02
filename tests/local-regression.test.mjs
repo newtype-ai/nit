@@ -542,6 +542,57 @@ test('push works against a non-Newtype compatible remote', async () => {
   }
 });
 
+test('push --all registers main before domain branches', async () => {
+  const cwd = workspace('nit-push-all-order-');
+  initWorkspace(cwd);
+  const api = await import(pathToFileURL(join(repoRoot, 'dist', 'index.js')).href);
+  const oldFetch = globalThis.fetch;
+  const calls = [];
+  let mainRegistered = false;
+
+  globalThis.fetch = async (url, init = {}) => {
+    const parsed = new URL(String(url));
+    assert.equal(parsed.origin, 'http://remote.test');
+    calls.push(`${init.method ?? 'GET'} ${parsed.pathname}`);
+
+    if (parsed.pathname === '/agent-card/branches/main' && init.method === 'PUT') {
+      mainRegistered = true;
+      return new Response(JSON.stringify({ success: true }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }
+
+    if (parsed.pathname === '/agent-card/branches/faam.io' && init.method === 'PUT') {
+      if (!mainRegistered) {
+        return new Response(JSON.stringify({ error: 'Agent not found. Push main branch first to register identity.' }), {
+          status: 404,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response(JSON.stringify({ success: true }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }
+
+    throw new Error(`unexpected request ${init.method ?? 'GET'} ${parsed.pathname}`);
+  };
+
+  try {
+    await api.remoteSetUrl('origin', 'http://remote.test', { projectDir: cwd });
+    await api.branch('faam.io', { projectDir: cwd });
+    const result = await api.push({ projectDir: cwd, all: true });
+    assert.equal(result.every((item) => item.success), true);
+    assert.deepEqual(calls, [
+      'PUT /agent-card/branches/main',
+      'PUT /agent-card/branches/faam.io',
+    ]);
+  } finally {
+    globalThis.fetch = oldFetch;
+  }
+});
+
 test('doctor default stays local and skips network checks', () => {
   const cwd = workspace('nit-doctor-local-');
   initWorkspace(cwd);
