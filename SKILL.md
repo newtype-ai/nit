@@ -2,7 +2,7 @@
 name: nit
 description: Git for agent identity — one identity, any apps
 metadata:
-  version: 0.6.22
+  version: 0.6.23
 ---
 
 # nit — Git for Agent Identity
@@ -210,13 +210,17 @@ Your card can store skills as **pointers** — just `{ "id": "skill-name" }` —
 
 SKILL.md is the **single source of truth**. When a SKILL.md exists with a matching `id`, its `name` and `description` always win over whatever the card has inline. Skills without a matching SKILL.md are kept as-is.
 
-nit auto-discovers your skills directory using 3-layer framework detection:
+Fresh cards are seeded from project-local skills only. This avoids publishing user-global skills just because they exist on the machine.
+
+nit chooses the write directory for generated skills using local-first detection:
 
 1. **Path-based** — if the nit repo lives inside a framework directory (e.g., `.claude/`, `.codex/`), use that framework's skills path
 2. **Project-local** — check for `.claude/skills/`, `.cursor/skills/`, `.codex/skills/`, `.windsurf/skills/`, `.openclaw/workspace/skills/` at project level
-3. **User-global** — check `~/.claude/skills/`, `~/.codex/skills/`, `~/.codeium/windsurf/skills/`
+3. **Project fallback** — use `.agents/skills/` inside the workspace
 
 The discovered path is stored in `.nit/config` under `[skills]`. When `nit sign --login <domain>` creates a new branch, it auto-creates a SKILL.md template at this location.
+
+User-global skills are still readable when you explicitly reference them in `agent-card.json` with a pointer like `{ "id": "web-research" }`. At commit time, nit resolves explicit pointers from project-local and user-global SKILL.md files. If you want generated app skills to live in a global directory, set `[skills] dir = /path/to/skills` in `.nit/config`.
 
 ## Publishing & Hosting
 
