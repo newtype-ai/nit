@@ -87,6 +87,7 @@ import {
   getRemoteUrl,
   getSkillsDir,
   setSkillsDir as configSetSkillsDir,
+  clearSkillsDir as configClearSkillsDir,
   setRemoteUrl as configSetRemoteUrl,
   setRpcUrl as configSetRpcUrl,
   setRuntime as configSetRuntime,
@@ -596,7 +597,7 @@ export async function skillDirReset(
   const projDir = projectDir(nitDir);
   const skillsDir = await discoverSkillsDir(projDir);
   await fs.mkdir(skillsDir, { recursive: true });
-  await configSetSkillsDir(nitDir, skillsDir);
+  await configClearSkillsDir(nitDir);
   return { skillsDir, source: 'auto' };
 }
 

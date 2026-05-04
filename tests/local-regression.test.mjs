@@ -578,8 +578,13 @@ test('skill dir command shows sets and resets generated skills directory', () =>
   assert.equal(resetResult.status, 0, resetResult.stderr || resetResult.stdout);
   assert.match(stripAnsi(resetResult.stdout), /skills dir reset:/);
   const resetConfig = readFileSync(join(cwd, '.nit', 'config'), 'utf8');
-  assert.match(resetConfig, new RegExp(`dir = ${join(cliCwd, '.claude', 'skills').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
+  assert.doesNotMatch(resetConfig, /\[skills\]/);
   assert.doesNotMatch(resetConfig, new RegExp(customDir.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+
+  const afterReset = runNit(cwd, ['skill', 'dir']);
+  assert.equal(afterReset.status, 0, afterReset.stderr || afterReset.stdout);
+  assert.match(stripAnsi(afterReset.stdout), new RegExp(`${join(cliCwd, '.claude', 'skills').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
+  assert.match(stripAnsi(afterReset.stdout), /source = auto/);
 });
 
 test('skill dir API resolves relative paths from workspace root', async () => {
@@ -600,6 +605,8 @@ test('skill dir API resolves relative paths from workspace root', async () => {
     skillsDir: join(cwd, '.claude', 'skills'),
     source: 'auto',
   });
+  assert.deepEqual(await api.skillDir({ projectDir: cwd }), reset);
+  assert.doesNotMatch(readFileSync(join(cwd, '.nit', 'config'), 'utf8'), /\[skills\]/);
 });
 
 test('push and pull exit nonzero on network failures', () => {

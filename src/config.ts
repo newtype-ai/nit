@@ -146,6 +146,17 @@ export async function setSkillsDir(
   await writeConfig(nitDir, config);
 }
 
+/**
+ * Clear the configured skills directory so callers use auto-detection.
+ */
+export async function clearSkillsDir(
+  nitDir: string,
+): Promise<void> {
+  const config = await readConfig(nitDir);
+  delete config.skillsDir;
+  await writeConfig(nitDir, config);
+}
+
 export function validateNitSkillConfig(config: NitSkillConfig): void {
   if (!NIT_SKILL_SOURCES.includes(config.source)) {
     throw new Error(`nit skill source must be one of: ${NIT_SKILL_SOURCES.join(', ')}`);
