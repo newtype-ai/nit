@@ -86,6 +86,7 @@ import {
   writeConfig,
   getRemoteUrl,
   getSkillsDir,
+  setSkillsDir as configSetSkillsDir,
   setRemoteUrl as configSetRemoteUrl,
   setRpcUrl as configSetRpcUrl,
   setRuntime as configSetRuntime,
@@ -538,6 +539,65 @@ export async function init(options?: {
 export interface NitSkillRefreshResult extends NitSkillInstallResult {
   skillsDir: string;
   config: NitSkillConfig;
+}
+
+export interface NitSkillDirResult {
+  skillsDir: string;
+  source: 'configured' | 'auto';
+}
+
+function resolveSkillsDirInput(projectDir: string, dir: string): string {
+  const trimmed = dir.trim();
+  if (!trimmed) {
+    throw new Error('Skills directory cannot be empty');
+  }
+  return resolve(projectDir, trimmed);
+}
+
+/**
+ * Show the generated skills directory for this workspace.
+ */
+export async function skillDir(
+  options?: { projectDir?: string },
+): Promise<NitSkillDirResult> {
+  const nitDir = findNitDir(options?.projectDir);
+  const projDir = projectDir(nitDir);
+  const configured = await getSkillsDir(nitDir);
+  if (configured) {
+    return { skillsDir: configured, source: 'configured' };
+  }
+  return { skillsDir: await discoverSkillsDir(projDir), source: 'auto' };
+}
+
+/**
+ * Set the generated skills directory for this workspace.
+ * Relative paths are resolved from the workspace root.
+ */
+export async function skillDirSet(
+  dir: string,
+  options?: { projectDir?: string },
+): Promise<NitSkillDirResult> {
+  const nitDir = findNitDir(options?.projectDir);
+  const projDir = projectDir(nitDir);
+  const skillsDir = resolveSkillsDirInput(projDir, dir);
+  validateConfigValue(skillsDir, 'Skills directory');
+  await fs.mkdir(skillsDir, { recursive: true });
+  await configSetSkillsDir(nitDir, skillsDir);
+  return { skillsDir, source: 'configured' };
+}
+
+/**
+ * Reset the generated skills directory to nit's local-first auto-detection.
+ */
+export async function skillDirReset(
+  options?: { projectDir?: string },
+): Promise<NitSkillDirResult> {
+  const nitDir = findNitDir(options?.projectDir);
+  const projDir = projectDir(nitDir);
+  const skillsDir = await discoverSkillsDir(projDir);
+  await fs.mkdir(skillsDir, { recursive: true });
+  await configSetSkillsDir(nitDir, skillsDir);
+  return { skillsDir, source: 'auto' };
 }
 
 /**

@@ -95,6 +95,8 @@ Auto-discovers skills from major agent frameworks:
 
 Fresh cards are seeded from project-local skills only. User-global skills can still resolve explicit pointers at commit time, and `[skills] dir = ...` controls where nit writes generated skills.
 
+Use `nit skill dir`, `nit skill dir <path>`, or `nit skill dir --reset` to inspect or change that generated skills directory without editing config by hand.
+
 ### Default hosted remote
 
 `nit` is local-first and speaks an open remote protocol. Newtype is the default hosted remote for agents that want free hosting and verification without running infrastructure. You can point `origin` at any compatible server:
@@ -153,6 +155,7 @@ Pure Node.js builtins. No bloat.
 | `nit auth set <domain> --provider <p> --account <a>` | Configure OAuth auth for a domain branch |
 | `nit auth show [domain]` | Show auth config for branch(es) |
 | `nit skill refresh [--source <source>] [--url <url>]` | Refresh nit SKILL.md from configured or specified source |
+| `nit skill dir [path\|--reset]` | Show, set, or reset the generated skills directory |
 
 ## Updates
 

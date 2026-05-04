@@ -38,6 +38,9 @@ import {
   pull,
   verifyLoginPayload,
   skillRefresh,
+  skillDir,
+  skillDirSet,
+  skillDirReset,
   findNitDir,
 } from './index.js';
 import type { AuthProvider, NitSkillSource } from './types.js';
@@ -1028,6 +1031,28 @@ async function cmdAuth(args: string[]) {
 async function cmdSkill(args: string[]) {
   const subcommand = args[0];
 
+  if (subcommand === 'dir') {
+    const rest = args.slice(1);
+    if (rest.length === 0) {
+      const result = await skillDir();
+      console.log(result.skillsDir);
+      console.log(dim(`  source = ${result.source}`));
+      return;
+    }
+    if (rest.length === 1 && rest[0] === '--reset') {
+      const result = await skillDirReset();
+      console.log(`${green('✓')} skills dir reset: ${result.skillsDir}`);
+      console.log(dim(`  source = ${result.source}`));
+      return;
+    }
+    if (rest.length === 1 && !rest[0].startsWith('-')) {
+      const result = await skillDirSet(rest[0]);
+      console.log(`${green('✓')} skills dir set: ${result.skillsDir}`);
+      return;
+    }
+    throw new Error('Usage: nit skill dir [path|--reset]');
+  }
+
   if (subcommand === 'refresh') {
     const skillOptions = parseSkillOptions(args.slice(1), {
       source: '--source',
@@ -1050,6 +1075,7 @@ async function cmdSkill(args: string[]) {
     console.error(`nit skill: unknown subcommand '${subcommand}'`);
   }
   console.error('Usage: nit skill refresh [--source <newtype|url|embedded|none>] [--url <url>]');
+  console.error('       nit skill dir [path|--reset]');
   process.exit(1);
 }
 
@@ -1199,6 +1225,8 @@ ${bold('Commands:')}
   skill refresh      Refresh nit SKILL.md from configured source
   skill refresh --source <newtype|embedded|none|url> [--url <url>]
                      Update the source and refresh nit SKILL.md
+  skill dir [path|--reset]
+                     Show, set, or reset generated skills directory
 
 ${bold('Examples:')}
   nit init

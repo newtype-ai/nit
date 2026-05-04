@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -555,6 +555,51 @@ test('skill refresh falls back when remote skill is oversized', async () => {
   } finally {
     globalThis.fetch = oldFetch;
   }
+});
+
+test('skill dir command shows sets and resets generated skills directory', () => {
+  const cwd = workspace('nit-skill-dir-');
+  const cliCwd = realpathSync(cwd);
+  initWorkspace(cwd);
+
+  const initial = runNit(cwd, ['skill', 'dir']);
+  assert.equal(initial.status, 0, initial.stderr || initial.stdout);
+  assert.match(stripAnsi(initial.stdout), /\.claude\/skills/);
+  assert.match(stripAnsi(initial.stdout), /source = configured/);
+
+  const customDir = join(cliCwd, 'shared-skills');
+  const setResult = runNit(cwd, ['skill', 'dir', 'shared-skills']);
+  assert.equal(setResult.status, 0, setResult.stderr || setResult.stdout);
+  assert.match(stripAnsi(setResult.stdout), /skills dir set:/);
+  assert.equal(existsSync(customDir), true);
+  assert.match(readFileSync(join(cwd, '.nit', 'config'), 'utf8'), new RegExp(`dir = ${customDir.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
+
+  const resetResult = runNit(cwd, ['skill', 'dir', '--reset']);
+  assert.equal(resetResult.status, 0, resetResult.stderr || resetResult.stdout);
+  assert.match(stripAnsi(resetResult.stdout), /skills dir reset:/);
+  const resetConfig = readFileSync(join(cwd, '.nit', 'config'), 'utf8');
+  assert.match(resetConfig, new RegExp(`dir = ${join(cliCwd, '.claude', 'skills').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
+  assert.doesNotMatch(resetConfig, new RegExp(customDir.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+});
+
+test('skill dir API resolves relative paths from workspace root', async () => {
+  const cwd = workspace('nit-skill-dir-api-');
+  initWorkspace(cwd);
+  const api = await import(pathToFileURL(join(repoRoot, 'dist', 'index.js')).href);
+
+  const result = await api.skillDirSet('api-skills', { projectDir: cwd });
+  assert.equal(result.skillsDir, join(cwd, 'api-skills'));
+  assert.equal(result.source, 'configured');
+  assert.equal(existsSync(join(cwd, 'api-skills')), true);
+
+  const shown = await api.skillDir({ projectDir: cwd });
+  assert.deepEqual(shown, result);
+
+  const reset = await api.skillDirReset({ projectDir: cwd });
+  assert.deepEqual(reset, {
+    skillsDir: join(cwd, '.claude', 'skills'),
+    source: 'auto',
+  });
 });
 
 test('push and pull exit nonzero on network failures', () => {

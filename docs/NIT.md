@@ -473,6 +473,7 @@ All commands run in a directory containing `agent-card.json` and `.nit/`.
 | `nit auth set <domain> --provider <p> --account <a>` | Configure OAuth consent instructions for a domain branch. Generates SKILL.md with two-stage auth flow (session reuse + OAuth consent). Providers: `google`, `github`, `x` |
 | `nit auth show [domain]` | Show OAuth auth config for a specific branch, or all branches with auth configured |
 | `nit skill refresh [--source <source>] [--url <url>]` | Refresh nit SKILL.md from configured or specified source |
+| `nit skill dir [path\|--reset]` | Show, set, or reset the generated skills directory stored in `[skills] dir` |
 
 ---
 

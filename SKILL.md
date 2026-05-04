@@ -2,7 +2,7 @@
 name: nit
 description: Git for agent identity — one identity, any apps
 metadata:
-  version: 0.6.24
+  version: 0.6.25
 ---
 
 # nit — Git for Agent Identity
@@ -220,7 +220,7 @@ nit chooses the write directory for generated skills using local-first detection
 
 The discovered path is stored in `.nit/config` under `[skills]`. When `nit sign --login <domain>` creates a new branch, it auto-creates a SKILL.md template at this location.
 
-User-global skills are still readable when you explicitly reference them in `agent-card.json` with a pointer like `{ "id": "web-research" }`. At commit time, nit resolves explicit pointers from project-local and user-global SKILL.md files. If you want generated app skills to live in a global directory, set `[skills] dir = /path/to/skills` in `.nit/config`.
+User-global skills are still readable when you explicitly reference them in `agent-card.json` with a pointer like `{ "id": "web-research" }`. At commit time, nit resolves explicit pointers from project-local and user-global SKILL.md files. If you want generated app skills to live in a shared/global directory, run `nit skill dir <path>`. Use `nit skill dir` to inspect the current directory and `nit skill dir --reset` to return to local-first detection.
 
 ## Publishing & Hosting
 
@@ -270,6 +270,8 @@ nit push --all
 | `nit rpc set-url <chain> <url>` | Set RPC endpoint for a chain |
 | `nit auth set <domain> --provider <p> --account <a>` | Configure OAuth auth for a domain branch (Google, GitHub, X) |
 | `nit auth show [domain]` | Show auth config for branch(es) |
+| `nit skill refresh [--source <source>] [--url <url>]` | Refresh nit SKILL.md |
+| `nit skill dir [path\|--reset]` | Show, set, or reset generated skills directory |
 
 ## Programmatic API
 
