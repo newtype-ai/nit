@@ -101,7 +101,7 @@ export function resolveAutoUpdateMode(env: EnvLike = process.env): { mode: Updat
 
   const configured = env.NIT_AUTO_UPDATE;
   if (!configured) {
-    return { mode: 'install' };
+    return { mode: 'notify' };
   }
 
   const mode = parseUpdateMode(configured);
@@ -200,12 +200,12 @@ export function installNitVersion(latest: string, options: InstallUpdateOptions 
 }
 
 /**
- * Auto-update nit if a newer version is available on npm.
+ * Check for nit updates and optionally install them.
  * Intended for CLI use only — never call from the library API.
  *
- * On success, re-executes the current command with the updated binary
- * and exits. On failure, warns and returns (caller continues with
- * current version).
+ * Default mode is notify. In install mode, a successful update re-executes the
+ * current command with the updated binary and exits. On failure, warns and
+ * returns so the caller continues with the current version.
  */
 export async function autoUpdate(options: AutoUpdateOptions = {}): Promise<void> {
   const env = options.env ?? process.env;

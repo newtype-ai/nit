@@ -159,15 +159,15 @@ Pure Node.js builtins. No bloat.
 
 ## Updates
 
-Most commands check for new nit releases and install exact npm versions automatically. Configure that behavior per process:
+Most commands check for new nit releases and notify by default. Configure that behavior per process:
 
 ```bash
-NIT_AUTO_UPDATE=install nit status   # default
-NIT_AUTO_UPDATE=notify nit status    # report only
+NIT_AUTO_UPDATE=notify nit status    # default, report only
+NIT_AUTO_UPDATE=install nit status   # install exact npm version and re-run
 NIT_AUTO_UPDATE=off nit status       # skip checks
 ```
 
-`NIT_NO_AUTO_UPDATE=1` still disables automatic updates. Use `nit update --check` or `nit update --install` when you want to handle it explicitly.
+`NIT_NO_AUTO_UPDATE=1` still disables update checks. Use `nit update --check` or `nit update --install` when you want to handle it explicitly.
 
 ## How It Works
 

@@ -61,6 +61,8 @@ async function fingerprintApi() {
 test('auto update policy supports off notify and install modes', async () => {
   const api = await updateApi();
 
+  assert.equal(api.resolveAutoUpdateMode({}).mode, 'notify');
+
   let checked = false;
   await api.autoUpdate({
     env: { NIT_AUTO_UPDATE: 'off' },
@@ -99,6 +101,24 @@ test('auto update policy supports off notify and install modes', async () => {
     ['npm', ['install', '-g', '@newtype-ai/nit@9.9.9']],
   ]);
   assert.match(installStderr, /updating 0\.6\.15 -> 9\.9\.9/);
+});
+
+test('auto update default notifies instead of installing', async () => {
+  const api = await updateApi();
+
+  const calls = [];
+  let stderr = '';
+  await api.autoUpdate({
+    env: {},
+    check: async () => ({ current: '0.6.15', latest: '9.9.9' }),
+    execFile: (file, args, options) => {
+      calls.push({ file, args, options });
+    },
+    stderr: { write: (message) => { stderr += message; } },
+  });
+
+  assert.equal(calls.length, 0);
+  assert.match(stderr, /update available 0\.6\.15 -> 9\.9\.9/);
 });
 
 test('auto update keeps legacy opt out and rejects invalid policy', async () => {
