@@ -54,6 +54,10 @@ async function updateApi() {
   return import(pathToFileURL(join(repoRoot, 'dist', 'update-check.js')).href);
 }
 
+async function fingerprintApi() {
+  return import(pathToFileURL(join(repoRoot, 'dist', 'index.js')).href);
+}
+
 test('auto update policy supports off notify and install modes', async () => {
   const api = await updateApi();
 
@@ -177,6 +181,54 @@ test('update check caches only valid semver versions', async () => {
 
   assert.equal(oversized, null);
   assert.match(readFileSync(cachePath, 'utf8'), /9\.9\.9/);
+});
+
+test('machine id reads linux machine-id under ESM', async () => {
+  const api = await fingerprintApi();
+  const machineId = api.getMachineId({
+    platform: () => 'linux',
+    readFileSync: (path, encoding) => {
+      assert.equal(path, '/etc/machine-id');
+      assert.equal(encoding, 'utf-8');
+      return 'machine-123\n';
+    },
+  });
+
+  assert.equal(machineId, 'machine-123');
+});
+
+test('machine id reads macOS IOPlatformUUID without shell', async () => {
+  const api = await fingerprintApi();
+  let call;
+  const machineId = api.getMachineId({
+    platform: () => 'darwin',
+    execFileSync: (file, args, options) => {
+      call = { file, args, options };
+      return '"IOPlatformUUID" = "uuid-123"\n';
+    },
+  });
+
+  assert.equal(machineId, 'uuid-123');
+  assert.deepEqual(call, {
+    file: 'ioreg',
+    args: ['-rd1', '-c', 'IOPlatformExpertDevice'],
+    options: { encoding: 'utf-8', timeout: 5000 },
+  });
+});
+
+test('machine id falls back when platform identifier is unavailable', async () => {
+  const api = await fingerprintApi();
+  const machineId = api.getMachineId({
+    platform: () => 'linux',
+    readFileSync: () => {
+      throw new Error('missing');
+    },
+    hostname: () => 'host-a',
+    arch: () => 'arm64',
+    cpus: () => [{ model: 'cpu-a' }],
+  });
+
+  assert.equal(machineId, 'host-a\nlinux\narm64\ncpu-a');
 });
 
 test('branch delete rejects traversal and preserves config', () => {

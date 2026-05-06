@@ -161,6 +161,13 @@ export {
   signEvmHash,
   signSolanaBytes,
 } from './wallet.js';
+export {
+  getMachineId,
+  computeMachineHash,
+  saveMachineHash,
+  loadMachineHash,
+} from './fingerprint.js';
+export type { MachineIdRuntime } from './fingerprint.js';
 
 // ---------------------------------------------------------------------------
 // Constants

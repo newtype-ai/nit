@@ -10,8 +10,8 @@
 // ---------------------------------------------------------------------------
 
 import { createHash } from 'node:crypto';
-import { execSync } from 'node:child_process';
-import { promises as fs } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { promises as fs, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { platform, hostname, arch, cpus } from 'node:os';
 
@@ -26,20 +26,40 @@ import { platform, hostname, arch, cpus } from 'node:os';
  * - Linux: /etc/machine-id (generated at OS install)
  * - Fallback: hostname + platform + arch + CPU model
  */
-export function getMachineId(): string {
+export interface MachineIdRuntime {
+  platform?: () => NodeJS.Platform | string;
+  execFileSync?: (
+    file: string,
+    args: string[],
+    options: { encoding: 'utf-8'; timeout: number },
+  ) => string;
+  readFileSync?: (path: string, encoding: 'utf-8') => string;
+  hostname?: () => string;
+  arch?: () => string;
+  cpus?: () => Array<{ model?: string }>;
+}
+
+export function getMachineId(runtime: MachineIdRuntime = {}): string {
+  const currentPlatform = (runtime.platform ?? platform)();
+  const runExecFile = runtime.execFileSync
+    ?? ((file: string, args: string[], options: { encoding: 'utf-8'; timeout: number }) => (
+      execFileSync(file, args, options) as string
+    ));
+
   try {
-    if (platform() === 'darwin') {
-      const output = execSync(
-        'ioreg -rd1 -c IOPlatformExpertDevice',
+    if (currentPlatform === 'darwin') {
+      const output = runExecFile(
+        'ioreg',
+        ['-rd1', '-c', 'IOPlatformExpertDevice'],
         { encoding: 'utf-8', timeout: 5000 },
       );
       const match = output.match(/"IOPlatformUUID"\s*=\s*"([^"]+)"/);
       if (match?.[1]) return match[1];
     }
 
-    if (platform() === 'linux') {
+    if (currentPlatform === 'linux') {
       try {
-        const id = require('node:fs').readFileSync('/etc/machine-id', 'utf-8').trim();
+        const id = (runtime.readFileSync ?? readFileSync)('/etc/machine-id', 'utf-8').trim();
         if (id) return id;
       } catch {
         // /etc/machine-id may not exist in containers
@@ -50,8 +70,8 @@ export function getMachineId(): string {
   }
 
   // Fallback: combine OS-level identifiers
-  const cpu = cpus()[0]?.model ?? 'unknown-cpu';
-  return `${hostname()}\n${platform()}\n${arch()}\n${cpu}`;
+  const cpu = (runtime.cpus ?? cpus)()[0]?.model ?? 'unknown-cpu';
+  return `${(runtime.hostname ?? hostname)()}\n${currentPlatform}\n${(runtime.arch ?? arch)()}\n${cpu}`;
 }
 
 // ---------------------------------------------------------------------------
