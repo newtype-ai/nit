@@ -31,6 +31,11 @@ const FETCH_TIMEOUT_MS = 10_000;
 const MAX_ERROR_BYTES = 16 * 1024;
 const MAX_CHALLENGE_BYTES = 4096;
 
+function apiUrl(apiBase: string, path: string): string {
+  validateHttpUrl(apiBase, 'Remote URL');
+  return new URL(path, apiBase.endsWith('/') ? apiBase : `${apiBase}/`).toString();
+}
+
 function parseRemoteBranchList(data: unknown): string[] {
   if (!data || typeof data !== 'object' || !Array.isArray((data as { branches?: unknown }).branches)) {
     throw new Error('Remote branch list has invalid shape');
@@ -136,7 +141,7 @@ export async function pushBranch(
   try {
     const authHeaders = await buildAuthHeaders(nitDir, 'PUT', path, body);
 
-    const res = await fetchWithTimeout(`${apiBase}${path}`, {
+    const res = await fetchWithTimeout(apiUrl(apiBase, path), {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
@@ -199,7 +204,7 @@ export async function listRemoteBranches(
   const path = '/agent-card/branches';
   const authHeaders = await buildAuthHeaders(nitDir, 'GET', path);
 
-  const res = await fetchWithTimeout(`${apiBase}${path}`, {
+  const res = await fetchWithTimeout(apiUrl(apiBase, path), {
     headers: authHeaders,
   }, { label: 'List remote branches', timeoutMs: FETCH_TIMEOUT_MS });
 
@@ -224,7 +229,7 @@ export async function deleteRemoteBranch(
   const path = `/agent-card/branches/${encodeURIComponent(branch)}`;
   const authHeaders = await buildAuthHeaders(nitDir, 'DELETE', path);
 
-  const res = await fetchWithTimeout(`${apiBase}${path}`, {
+  const res = await fetchWithTimeout(apiUrl(apiBase, path), {
     method: 'DELETE',
     headers: authHeaders,
   }, { label: `Delete remote branch "${branch}"`, timeoutMs: FETCH_TIMEOUT_MS });

@@ -773,6 +773,50 @@ test('push works against a non-Newtype compatible remote', async () => {
   }
 });
 
+test('remote API URLs normalize trailing slashes without changing signed paths', async () => {
+  const cwd = workspace('nit-remote-slash-');
+  initWorkspace(cwd);
+  const api = await import(pathToFileURL(join(repoRoot, 'dist', 'index.js')).href);
+  const oldFetch = globalThis.fetch;
+  const calls = [];
+
+  globalThis.fetch = async (url, init = {}) => {
+    const parsed = new URL(String(url));
+    calls.push(`${init.method ?? 'GET'} ${parsed.pathname}`);
+    assert.equal(parsed.origin, 'http://remote.test');
+    assert.doesNotMatch(parsed.pathname, /\/\//);
+
+    if (parsed.pathname === '/agent-card/branches/main' && init.method === 'PUT') {
+      return new Response(JSON.stringify({ success: true }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }
+
+    if (parsed.pathname === '/agent-card/branches') {
+      return new Response(JSON.stringify({ branches: [{ name: 'main' }] }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }
+
+    throw new Error(`unexpected request ${init.method ?? 'GET'} ${parsed.pathname}`);
+  };
+
+  try {
+    await api.remoteSetUrl('origin', 'http://remote.test/', { projectDir: cwd });
+    const pushResult = await api.push({ projectDir: cwd });
+    assert.equal(pushResult[0].success, true);
+    assert.deepEqual(await api.remoteBranches({ projectDir: cwd }), ['main']);
+    assert.deepEqual(calls, [
+      'PUT /agent-card/branches/main',
+      'GET /agent-card/branches',
+    ]);
+  } finally {
+    globalThis.fetch = oldFetch;
+  }
+});
+
 test('push --all registers main before domain branches', async () => {
   const cwd = workspace('nit-push-all-order-');
   initWorkspace(cwd);
