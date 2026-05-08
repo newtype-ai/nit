@@ -28,5 +28,9 @@ echo "== packaged CLI smoke =="
 bash scripts/package-smoke.sh
 
 echo ""
+echo "== init count smoke =="
+bash tests/harness/init-count-smoke.sh
+
+echo ""
 echo "== package dry run =="
 npm pack --dry-run

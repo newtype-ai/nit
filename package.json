@@ -21,6 +21,11 @@
   "scripts": {
     "build": "tsup",
     "test": "npm run build && node --test tests/*.test.mjs",
+    "test:init-count": "bash tests/harness/init-count-smoke.sh",
+    "test:runtime": "npm run build && node tests/harness/runtime-folder-flow-harness.mjs",
+    "test:newtype": "npm run build && node tests/harness/newtype-worker-flow-harness.mjs",
+    "test:flow": "npm run test:init-count && npm run test:runtime",
+    "test:flow:scale": "npm run build && node tests/harness/identity-flow-harness.mjs --agents 1000 --full-agents 25 --concurrency 16",
     "check:skill-version": "node scripts/check-skill-version.js",
     "smoke:package": "bash scripts/package-smoke.sh",
     "release:check": "bash scripts/release-check.sh",

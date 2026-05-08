@@ -6,14 +6,22 @@ export default defineConfig(async () => {
 
   // Fetch total npm downloads at build time — baked into the binary
   let installCount = 0;
-  try {
-    const res = await fetch(
-      'https://api.npmjs.org/downloads/point/2024-01-01:2099-12-31/@newtype-ai/nit',
-    );
-    const data = (await res.json()) as { downloads?: number };
-    installCount = data.downloads || 0;
-  } catch {
-    // Offline build — count stays 0
+  const installCountOverride = process.env.NIT_INSTALL_COUNT;
+  if (installCountOverride !== undefined) {
+    if (!/^\d+$/.test(installCountOverride)) {
+      throw new Error('NIT_INSTALL_COUNT must be a non-negative integer');
+    }
+    installCount = Number.parseInt(installCountOverride, 10);
+  } else {
+    try {
+      const res = await fetch(
+        'https://api.npmjs.org/downloads/point/2024-01-01:2099-12-31/@newtype-ai/nit',
+      );
+      const data = (await res.json()) as { downloads?: number };
+      installCount = data.downloads || 0;
+    } catch {
+      // Offline build — count stays 0
+    }
   }
 
   return {
