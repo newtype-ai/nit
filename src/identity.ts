@@ -19,7 +19,8 @@ import {
   verify,
   type KeyObject,
 } from 'node:crypto';
-import { promises as fs } from 'node:fs';
+import { constants as fsConstants, promises as fs } from 'node:fs';
+import type { FileHandle } from 'node:fs/promises';
 import { join } from 'node:path';
 import { validateAgentId } from './validation.js';
 
@@ -39,6 +40,10 @@ function base64ToBase64url(b64: string): string {
 
 const BASE64_RE = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
 const KEYPAIR_CHECK_MESSAGE = Buffer.from('nit identity key check', 'utf-8');
+const PRIVATE_KEY_MODE = 0o600;
+const IDENTITY_DIR_MODE = 0o700;
+const POSIX_PLATFORM = process.platform !== 'win32';
+const PRIVATE_KEY_OPEN_FLAGS = fsConstants.O_RDONLY | (POSIX_PLATFORM ? fsConstants.O_NOFOLLOW : 0);
 
 function decodeRawKey(value: string, label: string): Buffer {
   if (!BASE64_RE.test(value)) {
@@ -99,7 +104,8 @@ export async function generateKeypair(
   nitDir: string,
 ): Promise<{ publicKey: string; privateKey: string }> {
   const identityDir = join(nitDir, 'identity');
-  await fs.mkdir(identityDir, { recursive: true });
+  await fs.mkdir(identityDir, { recursive: true, mode: IDENTITY_DIR_MODE });
+  await restrictIdentityDir(identityDir);
 
   const { publicKey, privateKey } = generateKeyPairSync('ed25519');
 
@@ -116,11 +122,65 @@ export async function generateKeypair(
 
   await fs.writeFile(pubPath, pubBase64 + '\n', 'utf-8');
   await fs.writeFile(keyPath, privBase64 + '\n', {
-    mode: 0o600,
+    mode: PRIVATE_KEY_MODE,
     encoding: 'utf-8',
   });
+  await restrictPrivateKeyFile(keyPath);
 
   return { publicKey: pubBase64, privateKey: privBase64 };
+}
+
+async function restrictIdentityDir(identityDir: string): Promise<void> {
+  if (!POSIX_PLATFORM) return;
+  try {
+    await fs.chmod(identityDir, IDENTITY_DIR_MODE);
+  } catch {
+    // Directory mode is a best-effort hardening step; key file mode is enforced.
+  }
+}
+
+async function restrictPrivateKeyFile(keyPath: string): Promise<void> {
+  const handle = await fs.open(keyPath, PRIVATE_KEY_OPEN_FLAGS);
+  try {
+    const stat = await handle.stat();
+    if (!stat.isFile()) {
+      throw new Error('Private key must be a regular file.');
+    }
+    if (POSIX_PLATFORM && (stat.mode & 0o077) !== 0) {
+      await handle.chmod(PRIVATE_KEY_MODE);
+    }
+  } finally {
+    await handle.close();
+  }
+}
+
+async function readPrivateKeyBase64(nitDir: string): Promise<string> {
+  const keyPath = join(nitDir, 'identity', 'agent.key');
+  let handle: FileHandle | null = null;
+  try {
+    handle = await fs.open(keyPath, PRIVATE_KEY_OPEN_FLAGS);
+    const stat = await handle.stat();
+    if (!stat.isFile()) {
+      throw new Error('Private key must be a regular file.');
+    }
+    if (POSIX_PLATFORM && (stat.mode & 0o077) !== 0) {
+      await handle.chmod(PRIVATE_KEY_MODE);
+    }
+    return (await handle.readFile('utf-8')).trim();
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === 'ENOENT') {
+      throw new Error(
+        'Private key not found at .nit/identity/agent.key. Regenerate with `nit init`.',
+      );
+    }
+    if (code === 'ELOOP') {
+      throw new Error('Private key must be a regular file, not a symlink.');
+    }
+    throw err;
+  } finally {
+    await handle?.close();
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -151,16 +211,7 @@ export async function loadPublicKey(nitDir: string): Promise<string> {
  */
 export async function loadPrivateKey(nitDir: string): Promise<KeyObject> {
   const pubBase64 = await loadPublicKey(nitDir);
-  const keyPath = join(nitDir, 'identity', 'agent.key');
-
-  let privBase64: string;
-  try {
-    privBase64 = (await fs.readFile(keyPath, 'utf-8')).trim();
-  } catch {
-    throw new Error(
-      'Private key not found at .nit/identity/agent.key. Regenerate with `nit init`.',
-    );
-  }
+  const privBase64 = await readPrivateKeyBase64(nitDir);
 
   decodeRawKey(pubBase64, 'Public key');
   decodeRawKey(privBase64, 'Private key');
@@ -190,15 +241,7 @@ export async function loadRawKeyPair(nitDir: string): Promise<Uint8Array> {
  */
 export async function loadPrivateSeed(nitDir: string): Promise<Buffer> {
   const pubBase64 = await loadPublicKey(nitDir);
-  const keyPath = join(nitDir, 'identity', 'agent.key');
-  let privBase64: string;
-  try {
-    privBase64 = (await fs.readFile(keyPath, 'utf-8')).trim();
-  } catch {
-    throw new Error(
-      'Private key not found at .nit/identity/agent.key. Regenerate with `nit init`.',
-    );
-  }
+  const privBase64 = await readPrivateKeyBase64(nitDir);
   const privateSeed = decodeRawKey(privBase64, 'Private key');
   const privateKey = privateKeyObjectFromRaw(pubBase64, privBase64);
   assertKeypairMatches(pubBase64, privateKey);

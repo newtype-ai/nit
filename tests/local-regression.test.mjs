@@ -1,5 +1,16 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync, realpathSync } from 'node:fs';
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  statSync,
+  symlinkSync,
+  unlinkSync,
+  writeFileSync,
+  realpathSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -476,6 +487,37 @@ test('identity loading rejects mismatched agent id and private key', async () =>
   await assert.rejects(
     () => api.sign('hello', { projectDir: cwd }),
     /Private key does not match public key/,
+  );
+});
+
+test('private key loading repairs broad file permissions', async () => {
+  if (process.platform === 'win32') return;
+  const cwd = workspace('nit-identity-perms-');
+  initWorkspace(cwd);
+  const api = await import(pathToFileURL(join(repoRoot, 'dist', 'index.js')).href);
+  const keyPath = join(cwd, '.nit', 'identity', 'agent.key');
+
+  chmodSync(keyPath, 0o644);
+  await api.sign('hello', { projectDir: cwd });
+
+  assert.equal(statSync(keyPath).mode & 0o777, 0o600);
+});
+
+test('private key loading rejects symlinked key files', async () => {
+  if (process.platform === 'win32') return;
+  const cwd = workspace('nit-identity-symlink-');
+  initWorkspace(cwd);
+  const api = await import(pathToFileURL(join(repoRoot, 'dist', 'index.js')).href);
+  const keyPath = join(cwd, '.nit', 'identity', 'agent.key');
+  const targetPath = join(cwd, 'agent-key-target');
+
+  writeFileSync(targetPath, readFileSync(keyPath, 'utf8'), 'utf8');
+  unlinkSync(keyPath);
+  symlinkSync(targetPath, keyPath);
+
+  await assert.rejects(
+    () => api.sign('hello', { projectDir: cwd }),
+    /Private key must be a regular file, not a symlink/,
   );
 });
 
