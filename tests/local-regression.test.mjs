@@ -394,6 +394,7 @@ test('init fails without overwriting malformed existing agent-card.json', () => 
   assert.match(result.stderr, /Invalid agent-card\.json/);
   assert.equal(readFileSync(cardPath, 'utf8'), '{bad json');
   assert.equal(existsSync(join(cwd, '.nit')), false);
+  assert.equal(existsSync(join(cwd, '.gitignore')), false);
 });
 
 test('init fails before creating .nit when existing card lacks required fields', () => {
@@ -405,6 +406,7 @@ test('init fails before creating .nit when existing card lacks required fields',
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /missing "name"/);
   assert.equal(existsSync(join(cwd, '.nit')), false);
+  assert.equal(existsSync(join(cwd, '.gitignore')), false);
 });
 
 test('init rejects malformed skill entries before creating .nit', () => {
@@ -420,6 +422,37 @@ test('init rejects malformed skill entries before creating .nit', () => {
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /skills\[0\] must be a JSON object/);
   assert.equal(existsSync(join(cwd, '.nit')), false);
+  assert.equal(existsSync(join(cwd, '.gitignore')), false);
+});
+
+test('init creates .gitignore entry for private nit state', () => {
+  const cwd = workspace('nit-init-gitignore-');
+  initWorkspace(cwd);
+
+  const gitignore = readFileSync(join(cwd, '.gitignore'), 'utf8');
+  assert.match(gitignore, /^\.nit\/$/m);
+});
+
+test('init appends .nit to existing .gitignore exactly once', () => {
+  const cwd = workspace('nit-init-gitignore-existing-');
+  writeFileSync(join(cwd, '.gitignore'), 'node_modules/\n.DS_Store', 'utf8');
+
+  initWorkspace(cwd);
+
+  const gitignore = readFileSync(join(cwd, '.gitignore'), 'utf8');
+  assert.match(gitignore, /^node_modules\//);
+  assert.match(gitignore, /\.DS_Store\n\.nit\/\n$/);
+  assert.equal((gitignore.match(/^\.nit\/$/gm) ?? []).length, 1);
+});
+
+test('init respects existing .nit ignore variants without duplicating', () => {
+  const cwd = workspace('nit-init-gitignore-existing-nit-');
+  writeFileSync(join(cwd, '.gitignore'), '# local\n/.nit/\n', 'utf8');
+
+  initWorkspace(cwd);
+
+  const gitignore = readFileSync(join(cwd, '.gitignore'), 'utf8');
+  assert.equal(gitignore, '# local\n/.nit/\n');
 });
 
 test('checkout fails closed when working card is malformed', () => {

@@ -44,6 +44,77 @@ check() {
   fi
 }
 
+LAST_OUTPUT=""
+LAST_STDERR=""
+LAST_STATUS=0
+
+capture() {
+  set +e
+  LAST_OUTPUT="$("$@" 2>&1)"
+  LAST_STATUS=$?
+  LAST_STDERR=""
+  set -e
+}
+
+capture_stdout() {
+  local err_file
+  err_file="$(mktemp)"
+  set +e
+  LAST_OUTPUT="$("$@" 2>"$err_file")"
+  LAST_STATUS=$?
+  set -e
+  LAST_STDERR="$(cat "$err_file")"
+  rm -f "$err_file"
+  if [[ $LAST_STATUS -ne 0 && -n "$LAST_STDERR" ]]; then
+    if [[ -n "$LAST_OUTPUT" ]]; then
+      LAST_OUTPUT="$LAST_OUTPUT"$'\n'"$LAST_STDERR"
+    else
+      LAST_OUTPUT="$LAST_STDERR"
+    fi
+  fi
+}
+
+require_success() {
+  local desc="$1"
+  shift
+  capture "$@"
+  if [[ $LAST_STATUS -ne 0 ]]; then
+    fail "$desc failed with exit $LAST_STATUS: $LAST_OUTPUT"
+    exit 1
+  fi
+}
+
+require_stdout_success() {
+  local desc="$1"
+  shift
+  capture_stdout "$@"
+  if [[ $LAST_STATUS -ne 0 ]]; then
+    fail "$desc failed with exit $LAST_STATUS: $LAST_OUTPUT"
+    exit 1
+  fi
+}
+
+retry_success() {
+  local desc="$1"
+  local attempts="$2"
+  local delay="$3"
+  shift 3
+
+  for ((attempt = 1; attempt <= attempts; attempt++)); do
+    capture "$@"
+    if [[ $LAST_STATUS -eq 0 ]]; then
+      return 0
+    fi
+    if [[ $attempt -lt $attempts ]]; then
+      echo "  retry $attempt/$attempts: $desc failed with exit $LAST_STATUS"
+      sleep "$delay"
+    fi
+  done
+
+  fail "$desc failed after $attempts attempts with exit $LAST_STATUS: $LAST_OUTPUT"
+  exit 1
+}
+
 cleanup() {
   echo ""
   echo "Cleaning up $TEST_DIR..."
@@ -93,7 +164,8 @@ echo ""
 
 echo "── Test 1: nit init ──────────────────────────────────"
 cd "$TEST_DIR"
-INIT_OUTPUT=$($NIT init 2>&1)
+require_success "nit init" $NIT init
+INIT_OUTPUT="$LAST_OUTPUT"
 
 # Verify agent ID is present
 AGENT_ID=$(cat .nit/identity/agent-id | tr -d '\n')
@@ -156,7 +228,8 @@ else
 fi
 
 # Verify nit remote shows the URL
-REMOTE_OUTPUT=$($NIT remote 2>&1)
+require_success "nit remote" $NIT remote
+REMOTE_OUTPUT="$LAST_OUTPUT"
 if echo "$REMOTE_OUTPUT" | grep -q "https://api.newtype-ai.org"; then
   pass "nit remote shows default URL"
 else
@@ -164,7 +237,7 @@ else
 fi
 
 # Test set-url
-$NIT remote set-url origin https://example.com 2>&1
+require_success "nit remote set-url origin" $NIT remote set-url origin https://example.com
 if grep -q "url = https://example.com" .nit/config; then
   pass "set-url updated config"
 else
@@ -172,7 +245,7 @@ else
 fi
 
 # Test add
-$NIT remote add backup https://backup.example.com 2>&1
+require_success "nit remote add backup" $NIT remote add backup https://backup.example.com
 if grep -q 'remote "backup"' .nit/config && grep -q "url = https://backup.example.com" .nit/config; then
   pass "remote add created new remote"
 else
@@ -180,7 +253,7 @@ else
 fi
 
 # Restore default URL for remaining tests
-$NIT remote set-url origin https://api.newtype-ai.org 2>&1
+require_success "nit remote restore origin" $NIT remote set-url origin https://api.newtype-ai.org
 
 echo ""
 
@@ -189,7 +262,8 @@ echo ""
 # ---------------------------------------------------------------------------
 
 echo "── Test 2: nit status ─────────────────────────────────"
-STATUS_OUTPUT=$($NIT status 2>&1)
+require_success "nit status" $NIT status
+STATUS_OUTPUT="$LAST_OUTPUT"
 
 if echo "$STATUS_OUTPUT" | grep -q "On branch"; then
   pass "Status shows current branch"
@@ -216,7 +290,8 @@ echo ""
 # ---------------------------------------------------------------------------
 
 echo "── Test 3: nit push main (TOFU) ──────────────────────"
-PUSH_OUTPUT=$($NIT push 2>&1)
+retry_success "nit push main" 3 2 $NIT push
+PUSH_OUTPUT="$LAST_OUTPUT"
 
 if echo "$PUSH_OUTPUT" | grep -q "main"; then
   pass "Push output mentions main branch"
@@ -224,7 +299,7 @@ else
   fail "Push output doesn't mention main"
 fi
 
-if echo "$PUSH_OUTPUT" | grep -qv "✗"; then
+if ! echo "$PUSH_OUTPUT" | grep -q "✗"; then
   pass "No push errors"
 else
   fail "Push had errors: $PUSH_OUTPUT"
@@ -238,7 +313,8 @@ echo ""
 
 echo "── Test 4: Public card fetch ──────────────────────────"
 FETCH_URL="https://agent-${AGENT_ID}.newtype-ai.org/.well-known/agent-card.json"
-FETCH_RESPONSE=$(curl -s "$FETCH_URL")
+retry_success "public card fetch" 3 2 curl -fsS "$FETCH_URL"
+FETCH_RESPONSE="$LAST_OUTPUT"
 
 FETCH_NAME=$(echo "$FETCH_RESPONSE" | node -e "process.stdin.on('data',d=>{try{console.log(JSON.parse(d).name)}catch{console.log('PARSE_ERROR')}})")
 if [[ "$FETCH_NAME" != "PARSE_ERROR" && -n "$FETCH_NAME" ]]; then
@@ -262,16 +338,18 @@ echo ""
 
 echo "── Test 5: Branch workflow (faam.io) ──────────────────"
 
-$NIT branch faam.io > /dev/null 2>&1
-BRANCH_OUTPUT=$($NIT branch 2>&1)
+require_success "nit branch faam.io" $NIT branch faam.io
+require_success "nit branch list" $NIT branch
+BRANCH_OUTPUT="$LAST_OUTPUT"
 if echo "$BRANCH_OUTPUT" | grep -q "faam.io"; then
   pass "faam.io branch created"
 else
   fail "faam.io branch not found"
 fi
 
-$NIT checkout faam.io > /dev/null 2>&1
-STATUS_BRANCH=$($NIT status 2>&1)
+require_success "nit checkout faam.io" $NIT checkout faam.io
+require_success "nit status after checkout" $NIT status
+STATUS_BRANCH="$LAST_OUTPUT"
 if echo "$STATUS_BRANCH" | grep -q "faam.io"; then
   pass "Checked out faam.io"
 else
@@ -286,15 +364,17 @@ node -e "
   fs.writeFileSync('agent-card.json', JSON.stringify(card, null, 2) + '\n');
 "
 
-COMMIT_OUTPUT=$($NIT commit -m "FAAM persona" 2>&1)
+require_success "nit commit FAAM persona" $NIT commit -m "FAAM persona"
+COMMIT_OUTPUT="$LAST_OUTPUT"
 if echo "$COMMIT_OUTPUT" | grep -q "FAAM persona"; then
   pass "Commit succeeded"
 else
   fail "Commit failed: $COMMIT_OUTPUT"
 fi
 
-PUSH_BRANCH_OUTPUT=$($NIT push 2>&1)
-if echo "$PUSH_BRANCH_OUTPUT" | grep -q "faam.io"; then
+retry_success "nit push faam.io" 3 2 $NIT push
+PUSH_BRANCH_OUTPUT="$LAST_OUTPUT"
+if echo "$PUSH_BRANCH_OUTPUT" | grep -q "faam.io" && ! echo "$PUSH_BRANCH_OUTPUT" | grep -q "✗"; then
   pass "faam.io pushed to remote"
 else
   fail "faam.io push failed: $PUSH_BRANCH_OUTPUT"
@@ -308,7 +388,7 @@ echo ""
 
 echo "── Test 6: Ownership verification (valid) ─────────────"
 
-VERIFY_RESULT=$(node -e "
+retry_success "server verify valid login" 3 2 node -e "
   const { signMessage, loadAgentId, findNitDir } = require('$NIT_LIB');
   (async () => {
     const nitDir = findNitDir('$TEST_DIR');
@@ -326,7 +406,8 @@ VERIFY_RESULT=$(node -e "
     const data = await res.json();
     console.log(JSON.stringify(data));
   })();
-" 2>&1)
+"
+VERIFY_RESULT="$LAST_OUTPUT"
 
 if echo "$VERIFY_RESULT" | node -e "process.stdin.on('data',d=>{process.exit(JSON.parse(d).verified===true?0:1)})"; then
   pass "Verify returned verified: true"
@@ -349,7 +430,7 @@ echo ""
 
 echo "── Test 7: Cross-app replay (should fail) ─────────────"
 
-REPLAY_RESULT=$(node -e "
+retry_success "server reject cross-app replay" 3 2 node -e "
   const { signMessage, loadAgentId, findNitDir } = require('$NIT_LIB');
   (async () => {
     const nitDir = findNitDir('$TEST_DIR');
@@ -369,7 +450,8 @@ REPLAY_RESULT=$(node -e "
     const data = await res.json();
     console.log(res.status + ':' + JSON.stringify(data));
   })();
-" 2>&1)
+"
+REPLAY_RESULT="$LAST_OUTPUT"
 
 if echo "$REPLAY_RESULT" | grep -q "403"; then
   pass "Cross-app replay rejected with 403"
@@ -385,7 +467,7 @@ echo ""
 
 echo "── Test 8: Expired timestamp (should fail) ────────────"
 
-EXPIRED_RESULT=$(node -e "
+retry_success "server reject expired timestamp" 3 2 node -e "
   const { signMessage, loadAgentId, findNitDir } = require('$NIT_LIB');
   (async () => {
     const nitDir = findNitDir('$TEST_DIR');
@@ -404,7 +486,8 @@ EXPIRED_RESULT=$(node -e "
     const data = await res.json();
     console.log(res.status + ':' + JSON.stringify(data));
   })();
-" 2>&1)
+"
+EXPIRED_RESULT="$LAST_OUTPUT"
 
 if echo "$EXPIRED_RESULT" | grep -q "401"; then
   pass "Expired timestamp rejected with 401"
@@ -420,7 +503,8 @@ echo ""
 
 echo "── Test 9: nit remote ─────────────────────────────────"
 
-REMOTE_OUTPUT=$($NIT remote 2>&1)
+require_success "nit remote final" $NIT remote
+REMOTE_OUTPUT="$LAST_OUTPUT"
 
 if echo "$REMOTE_OUTPUT" | grep -q "$AGENT_ID"; then
   pass "Remote shows agent ID"
@@ -443,7 +527,8 @@ echo ""
 echo "── Test 10: nit sign ─────────────────────────────────"
 
 # Sign arbitrary message
-SIGN_OUTPUT=$($NIT sign "hello world" 2>&1)
+require_success "nit sign arbitrary message" $NIT sign "hello world"
+SIGN_OUTPUT="$LAST_OUTPUT"
 if [[ "$SIGN_OUTPUT" =~ ^[A-Za-z0-9+/=]+$ ]] && [[ ${#SIGN_OUTPUT} -gt 40 ]]; then
   pass "nit sign outputs base64 signature (${#SIGN_OUTPUT} chars)"
 else
@@ -451,7 +536,8 @@ else
 fi
 
 # Login payload (capture stdout only — stderr has status messages)
-LOGIN_OUTPUT=$($NIT sign --login faam.io 2>/dev/null)
+require_stdout_success "nit sign login" $NIT sign --login faam.io
+LOGIN_OUTPUT="$LAST_OUTPUT"
 LOGIN_AGENT_ID=$(echo "$LOGIN_OUTPUT" | node -e "process.stdin.on('data',d=>{try{console.log(JSON.parse(d).agent_id)}catch{console.log('')}})")
 LOGIN_DOMAIN=$(echo "$LOGIN_OUTPUT" | node -e "process.stdin.on('data',d=>{try{console.log(JSON.parse(d).domain)}catch{console.log('')}})")
 LOGIN_TIMESTAMP=$(echo "$LOGIN_OUTPUT" | node -e "process.stdin.on('data',d=>{try{console.log(JSON.parse(d).timestamp)}catch{console.log('')}})")
@@ -476,7 +562,7 @@ else
 fi
 
 # Verify login signature against the server
-VERIFY_LOGIN=$(node -e "
+retry_success "server verify nit sign login output" 3 2 node -e "
   (async () => {
     const res = await fetch('$API_BASE/agent-card/verify', {
       method: 'POST',
@@ -491,7 +577,8 @@ VERIFY_LOGIN=$(node -e "
     const data = await res.json();
     console.log(data.verified ? 'VERIFIED' : 'FAILED');
   })();
-" 2>&1)
+"
+VERIFY_LOGIN="$LAST_OUTPUT"
 if [[ "$VERIFY_LOGIN" == "VERIFIED" ]]; then
   pass "Login payload signature verified by server"
 else

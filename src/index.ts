@@ -175,6 +175,8 @@ export type { MachineIdRuntime } from './fingerprint.js';
 
 const NIT_DIR = '.nit';
 const CARD_FILE = 'agent-card.json';
+const GITIGNORE_FILE = '.gitignore';
+const NIT_GITIGNORE_ENTRY = '.nit/';
 const DEFAULT_API_BASE = 'https://api.newtype-ai.org';
 const CURRENT_PROTOCOL_VERSION = '0.3.0';
 const BASE64_RE = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
@@ -299,6 +301,31 @@ async function writeWorkingCard(
 ): Promise<void> {
   const cardPath = join(projectDir(nitDir), CARD_FILE);
   await fs.writeFile(cardPath, JSON.stringify(card, null, 2) + '\n', 'utf-8');
+}
+
+function gitignoreCoversNit(raw: string): boolean {
+  return raw.split(/\r?\n/).some((line) => {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) return false;
+    return trimmed === '.nit' || trimmed === '.nit/' || trimmed === '/.nit' || trimmed === '/.nit/';
+  });
+}
+
+async function ensureNitGitignored(projDir: string): Promise<void> {
+  const gitignorePath = join(projDir, GITIGNORE_FILE);
+  let raw = '';
+  try {
+    raw = await fs.readFile(gitignorePath, 'utf-8');
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code !== 'ENOENT') throw err;
+    await fs.writeFile(gitignorePath, `${NIT_GITIGNORE_ENTRY}\n`, 'utf-8');
+    return;
+  }
+
+  if (gitignoreCoversNit(raw)) return;
+  const separator = raw.length === 0 || raw.endsWith('\n') ? '' : '\n';
+  await fs.writeFile(gitignorePath, `${raw}${separator}${NIT_GITIGNORE_ENTRY}\n`, 'utf-8');
 }
 
 /**
@@ -430,6 +457,8 @@ export async function init(options?: {
     }
     discoveredSkills = await discoverProjectSkills(projDir);
   }
+
+  await ensureNitGitignored(projDir);
 
   // Create directory structure
   await fs.mkdir(join(nitDir, 'objects'), { recursive: true });
